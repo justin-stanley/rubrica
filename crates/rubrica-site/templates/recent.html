@@ -1,0 +1,30 @@
+{#- Recent changes: the newest commits that changed a page. -#}
+{% extends "base.html" %}
+{% block content %}
+<main id="main" class="doc">
+  <div class="doc__main">
+    <h1 class="doc-title">Recent changes</h1>
+    {%- if commits.is_empty() %}
+    <p>No history.</p>
+    {%- else %}
+    <ol class="recent">
+      {%- for c in commits %}
+      <li><time datetime="{{ c.iso }}">{{ c.human }}</time> <code>{{ c.short }}</code> <span class="recent__summary">{{ c.summary }}</span>
+        <ul>
+          {%- for p in c.pages %}
+          <li><a href="{{ p.href }}">{{ p.title }}</a></li>
+          {%- endfor %}
+          {%- if c.more > 0 %}
+          <li>and {{ c.more }} more</li>
+          {%- endif %}
+        </ul>
+      </li>
+      {%- endfor %}
+    </ol>
+    {%- endif %}
+    {%- if !complete %}
+    <p>Some history was not read (a shallow clone, the build's history budget, or a commit that could not be read): older changes are missing.</p>
+    {%- endif %}
+  </div>
+</main>
+{% endblock %}

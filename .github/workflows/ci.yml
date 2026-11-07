@@ -1,0 +1,283 @@
+name: CI
+# The gate. `Rust` runs scripts/ci.sh, the same script contributors run locally;
+# the supply-chain, secret and language-specific checks are their own jobs so each
+# is a required status check by name.
+#
+# This runs on pull requests from forks too: everything is GitHub-hosted, the token
+# is read-only, and no secrets are used, so a fork's code can't reach anything.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  # Pinned tool versions, bumped deliberately (the Dependabot `cargo` group
+  # does not see these).
+  CARGO_DENY_VERSION: 0.20.2
+  CARGO_AUDIT_VERSION: 0.22.2
+
+jobs:
+  # The search page's wasm bundle, built once here with the pinned toolchain and the pinned
+  # wasm-bindgen CLI (the version Cargo.toml pins for the crate; scripts/build-wasm.sh
+  # refuses another). A second build from another target directory must give the same bytes
+  # (scripts/wasm-reproducible.sh), the .wasm and the loader are held to their size budget,
+  # and the embed is tested. Its files are never committed: the jobs that build
+  # rubrica-site with its default features download them from here.
+  wasm:
+    name: wasm
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      # No `toolchain:` input: the action honours rust-toolchain.toml (1.97.0). The target is
+      # added to that toolchain, the one cargo runs here.
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
+      - uses: Swatinem/rust-cache@c8037a86dde8214a8310e9f54a8fc61ab362aa31 # v2
+      - name: The wasm target and the wasm-bindgen CLI, pinned
+        run: |
+          set -euo pipefail
+          rustup target add wasm32-unknown-unknown
+          cargo install wasm-bindgen-cli@0.2.126 --locked
+      - name: Build the bundle; a second build gives the same bytes
+        run: |
+          set -euo pipefail
+          scripts/build-wasm.sh --bundle
+          scripts/wasm-reproducible.sh
+      - name: The bundle crate, and the site that embeds it
+        run: cargo test --locked -p rubrica-wasm-bundle -p rubrica-site
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: wasm-bundle
+          path: |
+            crates/rubrica-wasm-bundle/src/rubrica-search_bg.wasm
+            crates/rubrica-wasm-bundle/src/rubrica-search.js
+            crates/rubrica-wasm-bundle/src/meta.rs
+          if-no-files-found: error
+          retention-days: 7
+
+  rust:
+    name: Rust
+    needs: wasm
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      # The wasm job's bundle: rubrica-site embeds it by default, and it is never committed.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: wasm-bundle
+          path: crates/rubrica-wasm-bundle/src
+      # No `toolchain:` input: the action honours rust-toolchain.toml (1.97.0).
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
+      - uses: Swatinem/rust-cache@c8037a86dde8214a8310e9f54a8fc61ab362aa31 # v2
+      - name: scripts/ci.sh
+        env:
+          RUBRICA_CI_SPLIT: "1" # deny and audit run as their own jobs below
+        run: scripts/ci.sh
+
+  msrv:
+    name: MSRV
+    runs-on: ubuntu-latest
+    env:
+      # rust-toolchain.toml pins the newest toolchain, and rustup honours that
+      # file over whatever is installed; this override is what makes the job
+      # test the MSRV. Keep it equal to `rust-version` in Cargo.toml (the first
+      # step fails if it drifts).
+      RUSTUP_TOOLCHAIN: "1.94"
+    needs: wasm
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      # The wasm job's bundle: rubrica-site embeds it by default, and it is never committed.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: wasm-bundle
+          path: crates/rubrica-wasm-bundle/src
+      - name: The override equals rust-version in Cargo.toml
+        run: |
+          set -euo pipefail
+          declared="$(sed -n 's/^rust-version = "\(.*\)"$/\1/p' Cargo.toml)"
+          [ "$declared" = "1.94" ] || { echo "::error::Cargo.toml says rust-version $declared; update this job"; exit 1; }
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
+        with:
+          toolchain: "1.94"
+      - uses: Swatinem/rust-cache@c8037a86dde8214a8310e9f54a8fc61ab362aa31 # v2
+      - name: Build and test on the MSRV
+        run: |
+          set -euo pipefail
+          rustc --version | grep -F ' 1.94.'
+          cargo build --locked --all-features
+          cargo test --locked --all-features
+
+  spec:
+    name: spec
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
+      - uses: Swatinem/rust-cache@c8037a86dde8214a8310e9f54a8fc61ab362aa31 # v2
+      - name: CommonMark and GFM spec examples
+        run: cargo test --locked -p rubrica-markdown --test spec
+
+  linear:
+    name: linear
+    needs: wasm
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      # The wasm job's bundle: rubrica-site embeds it by default, and it is never committed.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: wasm-bundle
+          path: crates/rubrica-wasm-bundle/src
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
+      - uses: Swatinem/rust-cache@c8037a86dde8214a8310e9f54a8fc61ab362aa31 # v2
+      - name: Site build time is linear
+        run: cargo test --locked -p rubrica-site --test linear --release
+      - name: Parser time is linear
+        run: |
+          set -euo pipefail
+          # tests/linear.rs of rubrica-markdown arrives later; a later change
+          # removes this guard. The render-level linear.rs of rubrica-render
+          # is wired in as a line here.
+          if [ -d crates/rubrica-markdown ]; then
+            cargo test --locked -p rubrica-markdown --test linear --release
+          else
+            echo "::notice::crates/rubrica-markdown does not exist yet; its linear test skipped"
+          fi
+
+  linear-arm64:
+    name: linear-arm64
+    # The ratio tests of the parser and the renderer on an arm64 runner, natively: no emulation.
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
+      - uses: Swatinem/rust-cache@c8037a86dde8214a8310e9f54a8fc61ab362aa31 # v2
+      - name: Renderer and parser time are linear
+        run: |
+          set -euo pipefail
+          cargo test --locked -p rubrica-render --test linear --release
+          cargo test --locked -p rubrica-markdown --test linear --release
+
+  no-js:
+    name: no-js
+    needs: wasm
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      # The wasm job's bundle: rubrica-site embeds it by default, and it is never committed.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: wasm-bundle
+          path: crates/rubrica-wasm-bundle/src
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
+      - uses: Swatinem/rust-cache@c8037a86dde8214a8310e9f54a8fc61ab362aa31 # v2
+      - name: No JavaScript in the repository or the output
+        run: |
+          set -euo pipefail
+          scripts/no-js.sh
+
+  # What crates.io would receive, for every crate that is published: the file list is the
+  # committed PACKAGE-FILES, the .crate is under crates.io's size limit, and the unpacked
+  # crate builds on its own. Nothing is published from here. The release workflow runs the
+  # same script before each publish, against the crates published before it; here none is
+  # published yet, so each sibling is taken from its path.
+  package:
+    name: package
+    needs: wasm
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      # The wasm job's bundle: the bundle crate packs it, and it is never committed.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: wasm-bundle
+          path: crates/rubrica-wasm-bundle/src
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
+      - uses: Swatinem/rust-cache@c8037a86dde8214a8310e9f54a8fc61ab362aa31 # v2
+      - name: Every crate packs to its PACKAGE-FILES and builds on its own
+        run: |
+          set -euo pipefail
+          scripts/package-check.sh --patch-siblings rubrica-markdown
+          scripts/package-check.sh --patch-siblings rubrica-render
+          scripts/package-check.sh --patch-siblings rubrica-wasm-bundle
+          scripts/package-check.sh --patch-siblings rubrica-site
+          scripts/package-check.sh --patch-siblings rubrica
+
+  cargo-deny:
+    name: cargo deny
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
+      - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2
+        with:
+          tool: cargo-deny@${{ env.CARGO_DENY_VERSION }}
+      - run: cargo deny check bans licenses sources
+
+  audit:
+    name: cargo audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
+      - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2
+        with:
+          tool: cargo-audit@${{ env.CARGO_AUDIT_VERSION }}
+      # bincode 1.x via syntect's dump-load: the syntax dump is a build-time embedded blob, never input
+      - run: cargo audit -D warnings --ignore RUSTSEC-2025-0141
+
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    env:
+      GITLEAKS_VERSION: 8.30.1
+      # sha256 of gitleaks_<version>_linux_x64.tar.gz from the release's
+      # checksums file. Bump both together.
+      GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0 # scan the whole history, not just the tree
+          persist-credentials: false
+      # The binary, not gitleaks-action: the action needs a licence key for some
+      # accounts and does PR bookkeeping with the token; the binary needs neither.
+      - name: Install gitleaks
+        run: |
+          set -euo pipefail
+          url="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -sSfL "$url" -o /tmp/gitleaks.tar.gz
+          echo "${GITLEAKS_SHA256}  /tmp/gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
+          install -m 0755 /tmp/gitleaks "$RUNNER_TEMP/gitleaks"
+      - name: gitleaks (history and tree)
+        run: '"$RUNNER_TEMP/gitleaks" git --redact --exit-code 1'

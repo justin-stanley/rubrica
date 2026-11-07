@@ -1,0 +1,129 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/rubrica-markdown",
+    "crates/rubrica-render",
+    "crates/rubrica-site",
+    "crates/rubrica",
+    "crates/rubrica-wasm",
+    "crates/rubrica-wasm-bundle",
+]
+# the fuzz crate is its own workspace (libFuzzer is C++ and needs a nightly)
+exclude = ["fuzz"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.94"
+license = "AGPL-3.0-only"
+publish = false
+repository = "https://github.com/justin-stanley/rubrica"
+
+# Every shared version is pinned here once; crates say `x.workspace = true`.
+[workspace.dependencies]
+rubrica-markdown = { path = "crates/rubrica-markdown", version = "0.1" }
+rubrica-render = { path = "crates/rubrica-render", version = "0.1" }
+# default-features = false: the binary crate (`rubrica`) forwards the `search-wasm` feature.
+rubrica-site = { path = "crates/rubrica-site", version = "0.1", default-features = false }
+rubrica-wasm-bundle = { path = "crates/rubrica-wasm-bundle", version = "0.1" }
+chrono = { version = "0.4", default-features = false, features = ["std", "serde"] }
+clap = { version = "4.6", features = ["derive"] }
+# The sanitizer's final pass, and html5ever (ammonia's own, at its
+# version) for the raw-HTML filter before it and the golden skeleton reducer.
+ammonia = "4.2"
+html5ever = "0.40"
+# Build-time highlighting. An explicit feature set, not syntect's bundled ones: pure Rust,
+# no onig, and no yaml or plist loaders.
+syntect = { version = "5.3", default-features = false, features = ["parsing", "default-syntaxes", "html", "regex-fancy"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Front matter. Pure Rust and maintained: serde_yaml is deprecated, and its
+# forks serde_yaml_ng/serde_norway sit on unsafe-libyaml (RUSTSEC-2024-0449,
+# unmaintained), which `cargo audit -D warnings` refuses.
+yaml-rust2 = { version = "0.13", default-features = false }
+sha2 = "0.10"
+# `rubrica check`'s reader: a walk by directory file descriptors (openat,
+# fstat, readdir on the fd), safe wrappers over the system calls (the
+# workspace forbids unsafe). Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT.
+rustix = { version = "1.1", default-features = false, features = ["std", "fs"] }
+# Exact: its Unicode data (18) is reconciled with unorm's by generated tables;
+# a bump regenerates them (see rubrica-render slug.rs `the_normalisation_crate_is_unicode_18`).
+unicode-normalization = "=0.1.26"
+
+# `rubrica build`'s templates: compiled, typed, HTML-escaped by
+# default. No default features (no `config`, `urlencode`, `derive` only).
+askama = { version = "0.16", default-features = false, features = ["derive", "std"] }
+# `rubrica build` reads the wiki's git tree at a commit (with each entry's
+# mode) and its history, read-only. No network, no worktree, no index:
+# object and reference reading only. `pack-cache-lru-dynamic`: gix's pack
+# cache (its one dependency, clru, gix already has).
+gix = { version = "0.90", default-features = false, features = ["sha1", "pack-cache-lru-dynamic"] }
+# `rubrica build --config`: the site settings file (site/site.toml's shape).
+toml = { version = "1", default-features = false, features = ["parse", "serde", "std"] }
+# rubrica-markdown's parser core (vendored from pulldown-cmark 0.13.6) needs these three.
+bitflags = "2"
+memchr = "2.5"
+unicase = "2.6"
+# the differential oracle for rubrica-markdown's vendored core: a dev-dependency of that
+# crate and of fuzz/ only; `cargo tree -e normal` must never show it (a check in the gate)
+pulldown-cmark = { version = "=0.13.6", default-features = false }
+# property tests of rubrica-markdown's autolink scanner: a dev-dependency only
+proptest = "1"
+# rubrica-wasm, the search page's script, in the browser. Exact: the crate and the
+# `wasm-bindgen` CLI that writes the loader must be the same version
+# (scripts/build-wasm.sh checks it against this lock file).
+wasm-bindgen = "=0.2.126"
+wasm-bindgen-futures = "0.4"
+js-sys = "0.3"
+web-sys = { version = "0.3", default-features = false }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+# The exhaustive walks over every code point (the slugger's digests and unit
+# walks) spend their time in these three; optimised, the five-context digest
+# takes about 2 s instead of 22. Tests only: dev and release are unchanged.
+# rubrica-wasm's size settings, a named profile: a per-package override cannot set `panic`
+# or `lto`. Only `cargo build --profile wasm` uses it (scripts/build-wasm.sh), so it changes
+# nothing else; its output is target/wasm32-unknown-unknown/wasm/.
+[profile.wasm]
+inherits = "release"
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+
+[profile.test.package.rubrica-render]
+opt-level = 3
+
+# rubrica-site's linear-time tests (`tests/linear.rs`) time the corpus model
+# on sites of thousands of pages. Tests only.
+[profile.test.package.rubrica-site]
+opt-level = 3
+
+[profile.test.package.unicode-normalization]
+opt-level = 3
+
+[profile.test.package.sha2]
+opt-level = 3
+
+# The sanitizer's parser, for `tests/quadratic.rs`: its time bounds tell a
+# linear render from a quadratic one, which a debug build of html5ever
+# blurs (1 MB of `&` took 5 s unoptimised, linear). Tests only.
+[profile.test.package.html5ever]
+opt-level = 3
+
+[profile.test.package.markup5ever]
+opt-level = 3
+
+[profile.test.package.tendril]
+opt-level = 3
+
+[profile.test.package.string_cache]
+opt-level = 3
+
+[profile.test.package.memchr]
+opt-level = 3
+
+[profile.test.package.ammonia]
+opt-level = 3

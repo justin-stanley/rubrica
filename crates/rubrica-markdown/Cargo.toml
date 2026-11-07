@@ -1,0 +1,26 @@
+[package]
+name = "rubrica-markdown"
+description = "Rubrica's Markdown parser: CommonMark 0.31.2 with GFM tables, strikethrough, task lists, footnotes and extended autolinks. The block and inline parsers derive from pulldown-cmark 0.13.6 (MIT)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license = "AGPL-3.0-only AND MIT"
+publish.workspace = true
+repository.workspace = true
+readme = "README.md"
+keywords = ["markdown", "commonmark", "gfm", "parser"]
+categories = ["parser-implementations", "text-processing"]
+
+[dependencies]
+bitflags.workspace = true
+memchr.workspace = true
+unicase.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+pulldown-cmark.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

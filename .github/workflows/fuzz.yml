@@ -61,7 +61,7 @@ jobs:
         if: steps.present.outputs.present == 'true'
         run: cargo install cargo-fuzz@0.13.2 --locked
       # fuzz/ is its own workspace with its own lock file, which the main audit never reads.
-      - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2
+      - uses: taiki-e/install-action@c509219cf42fba86913069efd0ade2458c59337b # v2
         if: steps.present.outputs.present == 'true'
         with:
           tool: cargo-audit@${{ env.CARGO_AUDIT_VERSION }}

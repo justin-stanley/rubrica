@@ -1,0 +1,60 @@
+{#- A wiki page: the docs layout of site/DESIGN.md. The nav and the TOC are
+    written twice, a collapsed <details> for small screens and a column for
+    wide ones (the CSS shows one). nav and toc are HTML the build wrote and
+    escaped (nav.rs-style trees, build/templates.rs). The body is the
+    render after the theme pass, between the prose markers. -#}
+{% extends "base.html" %}
+{% block content %}
+<div class="doc">
+  <div class="doc__nav">
+    <details class="panel doc__nav-small">
+      <summary>Pages</summary>
+      <div class="panel__body"><nav aria-label="Site pages">{{ nav|safe }}</nav></div>
+    </details>
+    <div class="doc__nav-wide"><nav aria-label="Pages">{{ nav|safe }}</nav></div>
+  </div>
+  {%- if !toc.is_empty() %}
+  <div class="doc__toc">
+    <details class="panel doc__toc-small">
+      <summary>On this page</summary>
+      <div class="panel__body"><nav aria-label="Page contents">{{ toc|safe }}</nav></div>
+    </details>
+    <div class="doc__toc-wide">
+      <nav aria-labelledby="r:toc-title"><p class="toc__title" id="r:toc-title">On this page</p>{{ toc|safe }}</nav>
+    </div>
+  </div>
+  {%- endif %}
+  <main id="main" class="doc__main">
+    {%- if !crumbs.is_empty() %}
+    <nav class="breadcrumbs" aria-label="Breadcrumb">
+      <ol>
+        {%- for crumb in crumbs %}
+        <li>{% if let Some(href) = crumb.href %}<a href="{{ href }}">{{ crumb.title }}</a>{% else %}{{ crumb.title }}{% endif %}</li>
+        {%- endfor %}
+        <li aria-current="page">{{ title }}</li>
+      </ol>
+    </nav>
+    {%- endif %}
+    {%- if title_h1 %}
+    <h1 class="doc-title">{{ title }}</h1>
+    {%- endif %}
+    {%- if let Some(description) = description %}
+    <p class="doc-description">{{ description }}</p>
+    {%- endif %}
+    <div class="doc-meta">
+      {%- if let Some(updated) = updated %}
+      <p>Last updated <time datetime="{{ updated.iso }}">{{ updated.human }}</time>.</p>
+      {%- endif %}
+      {%- if !tags.is_empty() %}
+      <p>Tags: {% for tag in tags %}{{ tag }}{% if !loop.last %}, {% endif %}{% endfor %}</p>
+      {%- endif %}
+      {%- if edit.is_some() || history.is_some() %}
+      <p>{% if let Some(edit) = edit %}<a href="{{ edit }}">Edit</a>{% endif %}{% if edit.is_some() && history.is_some() %} · {% endif %}{% if let Some(history) = history %}<a href="{{ history }}">History</a>{% endif %}</p>
+      {%- endif %}
+    </div>
+    <div class="prose">
+{{ body|safe }}
+</div><!--/prose-->
+  </main>
+</div>
+{% endblock %}

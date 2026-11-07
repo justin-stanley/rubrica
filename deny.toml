@@ -1,0 +1,55 @@
+# cargo-deny configuration for rubrica (calamus's, which is FeatherReader's).
+#
+# Run locally with:  cargo deny check bans licenses sources
+# Runs in the gate (scripts/ci.sh). Advisories are `cargo audit -D warnings`'s job
+# there; the [advisories] table is kept so a bare `cargo deny check` agrees.
+#
+#   * licenses — every crate in the tree must carry an AGPL-3.0-compatible,
+#     OSI-approved license (rubrica ships AGPL-3.0-only).
+#   * bans     — duplicate-version hygiene + an explicit deny list.
+#   * sources  — only crates.io (no unvetted git/registry sources).
+
+[graph]
+# Evaluate all target platforms so a Linux-only advisory on a Windows-only crate
+# doesn't silently pass on the dev Mac. all-features keeps the graph honest.
+all-features = true
+
+[advisories]
+version = 2
+# Un-actionable transitive advisories only, each with a one-line justification
+# and a link. Keep this list SHORT.
+ignore = [{ id = "RUSTSEC-2025-0141", reason = "bincode 1.x via syntect's dump-load: the syntax dump is a build-time embedded blob, never input" }]
+
+[licenses]
+version = 2
+allow = [
+    "AGPL-3.0-only",   # this workspace
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "MIT",
+    "MIT-0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "BSL-1.0",
+    "0BSD",
+    "CC0-1.0",
+    "Unlicense",
+    "Zlib",
+    "MPL-2.0",
+    "Unicode-3.0",     # ICU / unicode-ident
+    "Unicode-DFS-2016", # finl_unicode, with MIT OR Apache-2.0
+    "CDLA-Permissive-2.0",
+]
+confidence-threshold = 0.9
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"           # no `foo = "*"` dependencies
+allow-wildcard-paths = true  # the workspace's own path deps omit versions
+deny = []
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

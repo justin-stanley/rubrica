@@ -1,0 +1,112 @@
+{
+  "format": 1,
+  "options": {
+    "strict": false,
+    "same_page": true,
+    "wikijs_limits": false
+  },
+  "pages": 2,
+  "links": 6,
+  "errors": 4,
+  "warnings": 4,
+  "same_page_unchecked": 0,
+  "failed": true,
+  "findings": [
+    {
+      "file": "alpha.md",
+      "line": 9,
+      "severity": "warning",
+      "kind": "broken-anchor",
+      "href": "#nowhere",
+      "message": "no heading on /alpha has id \"nowhere\"",
+      "fix": null,
+      "hint": "2 heading(s) on that page; none is a close match",
+      "other_file": null,
+      "other_line": null
+    },
+    {
+      "file": "bad.md",
+      "line": 1,
+      "severity": "error",
+      "kind": "bad-front-matter",
+      "href": null,
+      "message": "no front matter: the first line is not ---",
+      "fix": null,
+      "hint": null,
+      "other_file": null,
+      "other_line": null
+    },
+    {
+      "file": "home.md",
+      "line": 6,
+      "severity": "error",
+      "kind": "duplicate-sec-id",
+      "href": null,
+      "message": "@sec id \"dup/x\" is already used at alpha.md:6",
+      "fix": null,
+      "hint": null,
+      "other_file": "alpha.md",
+      "other_line": 6
+    },
+    {
+      "file": "home.md",
+      "line": 9,
+      "severity": "error",
+      "kind": "broken-page-link",
+      "href": "/about",
+      "message": "there is no page /about in this repo",
+      "fix": null,
+      "hint": null,
+      "other_file": null,
+      "other_line": null
+    },
+    {
+      "file": "home.md",
+      "line": 10,
+      "severity": "warning",
+      "kind": "broken-anchor",
+      "href": "/alpha#capacity--memory",
+      "message": "no heading on /alpha has id \"capacity--memory\"",
+      "fix": "/alpha#capacity-memory",
+      "hint": "heading is \"Capacity & memory\" (line 7)",
+      "other_file": null,
+      "other_line": null
+    },
+    {
+      "file": "home.md",
+      "line": 11,
+      "severity": "error",
+      "kind": "relative-link",
+      "href": "alpha",
+      "message": "a relative link to alpha.md: Wiki.js resolves it against the page as a directory, a browser against the page's directory",
+      "fix": "/alpha",
+      "hint": "make internal links absolute, with a leading \"/\"",
+      "other_file": null,
+      "other_line": null
+    },
+    {
+      "file": "home.md",
+      "line": 12,
+      "severity": "warning",
+      "kind": "broken-page-link",
+      "href": "/draft",
+      "message": "/draft is not published (published: false)",
+      "fix": null,
+      "hint": null,
+      "other_file": null,
+      "other_line": null
+    },
+    {
+      "file": "home.md",
+      "line": 13,
+      "severity": "warning",
+      "kind": "broken-asset-link",
+      "href": "/pic.png",
+      "message": "the file it names is not in this repo",
+      "fix": null,
+      "hint": null,
+      "other_file": null,
+      "other_line": null
+    }
+  ]
+}

@@ -1,0 +1,30 @@
+{#- The pages list: every page. With the wasm bundle, the search form, its results and
+    the bundle's loader (the one script any page names) come first; without it, no script. -#}
+{% extends "base.html" %}
+{% block content %}
+<main id="main" class="doc">
+  <div class="doc__main">
+    {%- if chrome.search_wasm %}
+    <h1 class="doc-title">Search</h1>
+    <form role="search" action="/_search" method="get">
+      <label class="visually-hidden" for="r:search-page">Search</label>
+      <input id="r:search-page" type="search" name="q" autocomplete="off">
+      <button type="submit">Search</button>
+    </form>
+    <p id="r:status" role="status"></p>
+    <ol id="r:results" class="results"></ol>
+    <h2>All pages</h2>
+    {%- else %}
+    <h1 class="doc-title">Pages</h1>
+    {%- endif %}
+    <ul class="all-pages">
+      {%- for p in pages %}
+      <li><a href="{{ p.href }}">{{ p.title }}</a></li>
+      {%- endfor %}
+    </ul>
+  </div>
+</main>
+{%- if chrome.search_wasm %}
+<script type="module" src="/_assets/rubrica-search.js"></script>
+{%- endif %}
+{% endblock %}

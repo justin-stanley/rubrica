@@ -1,0 +1,20 @@
+{#- A redirect stub (front matter `redirect_to:`): the static server cannot
+    answer 301, so the page sends the reader on. -#}
+<!DOCTYPE html>
+<html lang="{{ lang }}">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="{{ csp|safe }}">
+<meta name="referrer" content="same-origin">
+<meta http-equiv="refresh" content="0; url={{ target }}">
+{%- if let Some(canonical) = canonical %}
+<link rel="canonical" href="{{ canonical }}">
+{%- endif %}
+<title>{{ title }}</title>
+</head>
+<body>
+<main id="main">
+<p>This page has moved to <a href="{{ target }}">{{ target }}</a>.</p>
+</main>
+</body>
+</html>

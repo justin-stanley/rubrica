@@ -1,0 +1,45 @@
+[package]
+name = "rubrica-site"
+description = "The corpus: page set, URLs, nav, TOC, link graph, search index and templates."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+repository.workspace = true
+readme = "README.md"
+keywords = ["wiki", "static-site", "search", "markdown"]
+categories = ["web-programming", "text-processing"]
+
+[dependencies]
+rubrica-render.workspace = true
+# Build-time highlighting of fenced code.
+syntect.workspace = true
+# NFC for check-anchors' `loose()` and the duplicate-URL fold; rubrica-render's
+# exact pin.
+unicode-normalization.workspace = true
+# The render cache's content key, when the caller gives no blob id.
+sha2.workspace = true
+# `build`: the page templates, and the search index's JSON.
+askama.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+# Commit dates, in the committer's offset.
+chrono.workspace = true
+# The search page's wasm bundle (its .wasm and loader), embedded under `_assets/`.
+rubrica-wasm-bundle = { workspace = true, optional = true }
+
+[features]
+default = ["search-wasm"]
+# Embed the wasm search bundle. It needs the bundle's files (scripts/build-wasm.sh --bundle);
+# `--no-default-features` builds without them.
+search-wasm = ["dep:rubrica-wasm-bundle"]
+
+[dev-dependencies]
+serde.workspace = true
+serde_json.workspace = true
+# The build tests read the HTML they write with a real tokenizer.
+html5ever.workspace = true
+
+[lints]
+workspace = true

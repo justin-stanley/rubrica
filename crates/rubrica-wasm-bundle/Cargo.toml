@@ -1,0 +1,27 @@
+[package]
+name = "rubrica-wasm-bundle"
+description = "The prebuilt wasm search bundle for rubrica sites: built and attested by CI from rubrica-wasm."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+repository.workspace = true
+readme = "README.md"
+keywords = ["wasm", "search", "wiki"]
+categories = ["web-programming", "wasm"]
+# Data only: no dependencies and no build script (nothing here may make its own files).
+# The .wasm, the loader and their provenance (meta.rs) are written by
+# `scripts/build-wasm.sh --bundle`, are ignored by git, and must exist before this crate
+# compiles; PACKAGE-FILES lists what a published crate holds.
+include = [
+    "src/lib.rs",
+    "src/meta.rs",
+    "src/rubrica-search_bg.wasm",
+    "src/rubrica-search.js",
+    "Cargo.toml",
+    "README.md",
+]
+
+[lints]
+workspace = true

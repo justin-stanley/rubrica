@@ -1,0 +1,56 @@
+name: DCO
+# Every commit in a pull request must carry a `Signed-off-by:` line whose name and
+# email equal the commit's author. No third-party action: nothing to pin, and a
+# fork's code never runs here (only git metadata is read).
+#
+# A bot's pull request is exempt: Dependabot and GitHub Actions cannot sign off. The
+# exemption is keyed on `github.event.pull_request.user.login` being `dependabot[bot]`
+# or `github-actions[bot]`, which GitHub sets; a commit's author name and email are
+# whatever the committer typed, so neither exempts anything. (Owner decision, 2026-10-31.)
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dco-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  dco:
+    name: DCO
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Signed-off-by matches the author
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+          PR_USER: ${{ github.event.pull_request.user.login }}
+        run: |
+          set -euo pipefail
+          case "$PR_USER" in
+            'dependabot[bot]' | 'github-actions[bot]')
+              echo "::notice::pull request opened by $PR_USER: the DCO check does not apply to a bot"
+              exit 0 ;;
+          esac
+          bad=0
+          # Merge commits are skipped: they carry no change of their own.
+          for sha in $(git rev-list --no-merges "$BASE..$HEAD"); do
+            name="$(git log -1 --format='%an' "$sha")"
+            email="$(git log -1 --format='%ae' "$sha")"
+            author="$name <$email>"
+            # One `Name <email>` per Signed-off-by trailer.
+            signed="$(git log -1 --format='%(trailers:key=Signed-off-by,valueonly)' "$sha")"
+            if ! printf '%s\n' "$signed" | grep -Fxq -- "$author"; then
+              echo "::error::$sha: no Signed-off-by line equal to the author '$author' (git commit -s)"
+              bad=1
+            fi
+          done
+          exit "$bad"

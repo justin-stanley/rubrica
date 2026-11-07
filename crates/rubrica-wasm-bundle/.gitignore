@@ -1,0 +1,4 @@
+# Written by scripts/build-wasm.sh --bundle; never committed (no binaries in git).
+src/*.wasm
+src/*.js
+src/meta.rs

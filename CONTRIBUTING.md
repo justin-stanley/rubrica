@@ -161,6 +161,35 @@ The signers file lists the maintainer's release key (an SSH Ed25519 key used onl
 Rubrica's release tags). A new or replacement key is added to `.github/allowed_signers` in a
 reviewed pull request, before the first tag it signs.
 
+### The first publish of the crates
+
+A crate that does not exist on crates.io cannot have Trusted Publishing configured yet, so the
+first release of each of the five (`rubrica-markdown`, `rubrica-render`, `rubrica-wasm-bundle`,
+`rubrica-site`, `rubrica`) uses a short-lived token, and every later release uses none. The
+owner does this once:
+
+1. Sign in to [crates.io](https://crates.io) with GitHub and verify the e-mail address on the
+   account (crates.io refuses a publish without one).
+2. Create an API token with the `publish-new` scope, restricted to the five crate names, that
+   expires in one day.
+3. In the repository's `crates-io` environment, add the token as the secret
+   `CRATES_IO_PUBLISH_NEW` and set the variables `FIRST_PUBLISH_RUBRICA_MARKDOWN`,
+   `FIRST_PUBLISH_RUBRICA_RENDER`, `FIRST_PUBLISH_RUBRICA_WASM_BUNDLE`,
+   `FIRST_PUBLISH_RUBRICA_SITE` and `FIRST_PUBLISH_RUBRICA` to `true`.
+4. Tag the final release (a candidate publishes no crate) and approve each of the five
+   `crates-io` jobs as it comes up; they run one after another, in dependency order. A job
+   whose crate is already on crates.io at that version is skipped, so a failed run is re-run.
+5. For each of the five crates, on its crates.io settings page, add a Trusted Publishing
+   configuration: repository `justin-stanley/rubrica`, workflow `release.yml`, environment
+   `crates-io`.
+6. Delete the token on crates.io, the `CRATES_IO_PUBLISH_NEW` secret, and the five
+   `FIRST_PUBLISH_*` variables. Without them a later release publishes with Trusted
+   Publishing; with the variables left set it would try the deleted token and fail.
+
+A candidate tag needs the workspace version to carry the suffix (`0.1.0-rc.1`), and the
+sibling requirements in the root `Cargo.toml` start at `X.Y.Z-0` so that they admit it.
+`tools/public-workflows-check.sh` pins both.
+
 ## Licensing
 
 Rubrica is [AGPL-3.0-only](LICENSE). By submitting a contribution you agree it is licensed the

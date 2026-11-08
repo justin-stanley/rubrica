@@ -517,7 +517,7 @@ chain_report=$(ruby -ryaml -e '
   rel = YAML.load_file(ARGV[0])["jobs"]
   ci = YAML.load_file(ARGV[1])["jobs"]
   chain = [
-    ["publish-markdown", "rubrica-markdown", "FIRST_PUBLISH_RUBRICA_MARKDOWN", []],
+    ["publish-markdown", "rubrica-markdown", "FIRST_PUBLISH_RUBRICA_MARKDOWN", ["build", "image"]],
     ["publish-render", "rubrica-render", "FIRST_PUBLISH_RUBRICA_RENDER", ["publish-markdown"]],
     ["publish-wasm-bundle", "rubrica-wasm-bundle", "FIRST_PUBLISH_RUBRICA_WASM_BUNDLE", ["publish-render", "wasm"]],
     ["publish-site", "rubrica-site", "FIRST_PUBLISH_RUBRICA_SITE", ["publish-wasm-bundle"]],
@@ -579,6 +579,35 @@ for j in publish-markdown publish-render publish-wasm-bundle publish-site publis
 done
 for k in $chain_keys; do
   printf '%s\n' "$chain_report" | grep -qxF "$k" || bad "the publish chain: $k does not hold"
+done
+# The manifests agree with the chain: each crate it publishes is publishable (cargo metadata
+# reports `publish` as null, not `[]`), and every other workspace crate is not (rubrica-wasm
+# is built into the bundle crate, never published itself).
+pub_report=$(cargo metadata --no-deps --locked --format-version 1 | ruby -rjson -e '
+  chain = %w[rubrica-markdown rubrica-render rubrica-wasm-bundle rubrica-site rubrica]
+  pk = JSON.parse(STDIN.read)["packages"]
+  pk.each do |p|
+    open = p["publish"].nil?
+    if chain.include?(p["name"])
+      puts "manifest-not-publishable #{p["name"]}" unless open
+    else
+      puts "manifest-publishable #{p["name"]}" if open
+    end
+  end
+  (chain - pk.map { |p| p["name"] }).each { |n| puts "manifest-missing #{n}" }
+  puts "manifest-no-wasm" unless pk.any? { |p| p["name"] == "rubrica-wasm" }
+' 2>&1) || bad "cargo metadata or its reader failed: $pub_report"
+[ -z "$pub_report" ] || bad "publish settings differ from the chain: $(printf '%s' "$pub_report" | tr '\n' ';')"
+# A candidate tag is the workspace version with a suffix (`v0.1.0-rc.1` needs `0.1.0-rc.1` in
+# Cargo.toml, the check job's rule), and cargo refuses a path dependency whose requirement
+# does not admit that version (`^0.1` does not match `0.1.0-rc.1`). So each sibling's
+# requirement in [workspace.dependencies] starts at `X.Y.Z-0`, the lowest prerelease of the
+# release being prepared.
+base=$(sed -n 's/^version = "\([0-9]*\.[0-9]*\.[0-9]*\)\(-.*\)\{0,1\}"$/\1/p' Cargo.toml | head -1)
+[ -n "$base" ] || bad "Cargo.toml: no workspace version"
+for k in rubrica-markdown rubrica-render rubrica-site rubrica-wasm-bundle; do
+  grep_status -cE "^$k = \{ path = \"crates/$k\", version = \">=$base-0, <[0-9]+\.[0-9]+\.[0-9]+\"" Cargo.toml
+  [ "$out" = 1 ] || bad "Cargo.toml: $k's requirement does not start at $base-0, so a candidate tag (v$base-rc.N) cannot resolve it"
 done
 grep_status -c 'environment: crates-io' "$rel"
 [ "$out" = 5 ] || bad "release.yml has 'environment: crates-io' $out times, want 5 (one per published crate)"

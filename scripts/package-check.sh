@@ -9,10 +9,13 @@
 #    exactly those files, and is under crates.io's 10 MB limit;
 # 3. the unpacked crate builds on its own: nothing it needs is outside it.
 #
-# --patch-siblings: before the workspace's other crates are on crates.io, cargo cannot find
-# them in the index. CI's `package` job passes this and each sibling is taken from its path
-# (the packed manifest is unchanged); the release jobs pass nothing, so the unpacked crate
-# is built against the crates published before it. The bundle crate's files must exist
+# --patch-siblings: cargo packs a crate against the registry's copy of the workspace's other
+# crates (the packed manifest names them by version), so each must be on crates.io at that
+# version. On a branch they are not: before the first release none is, and after it the
+# branch's version is ahead of the last release. CI's `package` job passes this and each
+# sibling is taken from its path (the packed manifest is unchanged). The release jobs pass
+# nothing: they run in dependency order, so the unpacked crate is built against the siblings
+# the chain published just before it. The bundle crate's files must exist
 # (scripts/build-wasm.sh --bundle, or CI's downloaded artifact).
 set -euo pipefail
 export LC_ALL=C

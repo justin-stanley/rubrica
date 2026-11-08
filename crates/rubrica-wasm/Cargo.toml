@@ -5,6 +5,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+# Never published: rubrica-wasm-bundle carries this crate's built output.
 publish = false
 repository.workspace = true
 

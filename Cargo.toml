@@ -16,16 +16,19 @@ version = "0.1.0"
 edition = "2021"
 rust-version = "1.94"
 license = "AGPL-3.0-only"
-publish = false
 repository = "https://github.com/justin-stanley/rubrica"
+homepage = "https://github.com/justin-stanley/rubrica"
 
 # Every shared version is pinned here once; crates say `x.workspace = true`.
 [workspace.dependencies]
-rubrica-markdown = { path = "crates/rubrica-markdown", version = "0.1" }
-rubrica-render = { path = "crates/rubrica-render", version = "0.1" }
+# The crates' own requirements start at X.Y.Z-0, not X.Y: a candidate tag (v0.1.0-rc.1) needs
+# that version in the workspace, which `^0.1` does not admit (tools/public-workflows-check.sh).
+# A new release line moves both ends.
+rubrica-markdown = { path = "crates/rubrica-markdown", version = ">=0.1.0-0, <0.2.0" }
+rubrica-render = { path = "crates/rubrica-render", version = ">=0.1.0-0, <0.2.0" }
 # default-features = false: the binary crate (`rubrica`) forwards the `search-wasm` feature.
-rubrica-site = { path = "crates/rubrica-site", version = "0.1", default-features = false }
-rubrica-wasm-bundle = { path = "crates/rubrica-wasm-bundle", version = "0.1" }
+rubrica-site = { path = "crates/rubrica-site", version = ">=0.1.0-0, <0.2.0", default-features = false }
+rubrica-wasm-bundle = { path = "crates/rubrica-wasm-bundle", version = ">=0.1.0-0, <0.2.0" }
 chrono = { version = "0.4", default-features = false, features = ["std", "serde"] }
 clap = { version = "4.6", features = ["derive"] }
 # The sanitizer's final pass, and html5ever (ammonia's own, at its

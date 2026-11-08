@@ -25,7 +25,8 @@ name: Release
 #   for a final release), whose digest has its own attestation.
 # * `publish-markdown`, `publish-render`, `publish-wasm-bundle`, `publish-site`, `publish-bin`:
 #   the five crates to crates.io, one job each, in the order they depend on each other (the
-#   bundle crate before `rubrica-site`, which embeds it). Each runs under the `crates-io`
+#   bundle crate before `rubrica-site`, which embeds it), starting only after `build` and
+#   `image` have succeeded, since a published version cannot be taken back. Each runs under the `crates-io`
 #   environment, which needs the maintainer's approval, and never for a candidate tag. Each
 #   skips a crate that is already published at this version, so a failed chain is re-run;
 #   packs it (scripts/package-check.sh: the file list is the committed PACKAGE-FILES, the
@@ -452,7 +453,9 @@ jobs:
 
   publish-markdown:
     name: Publish rubrica-markdown to crates.io
-    needs: check
+    # After every binary and the image: a crates.io version cannot be taken back, so the chain
+    # starts only once everything else in the release has built.
+    needs: [check, build, image]
     if: ${{ !contains(github.ref_name, '-rc.') }}
     runs-on: ubuntu-latest
     environment: crates-io # requires the maintainer's approval

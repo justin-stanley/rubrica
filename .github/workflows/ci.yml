@@ -283,8 +283,9 @@ jobs:
   # What crates.io would receive, for every crate that is published: the file list is the
   # committed PACKAGE-FILES, the .crate is under crates.io's size limit, and the unpacked
   # crate builds on its own. Nothing is published from here. The release workflow runs the
-  # same script before each publish, against the crates published before it; here none is
-  # published yet, so each sibling is taken from its path.
+  # same script before each publish, against the crates published before it; here the
+  # siblings are at a version crates.io does not hold yet (none, or the next release's), so
+  # each is taken from its path.
   package:
     name: package
     needs: wasm

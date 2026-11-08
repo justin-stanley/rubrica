@@ -5,40 +5,31 @@ Nothing in `x.y.0` depends on a later release. Every release candidate is an att
 soaked for 24 hours on a staging host that is separate from the host serving the project's
 own documentation.
 
-## 0.1.0: static, smallest
+## 0.1.0: static
 
 Delivers:
 - `rubrica check` and `rubrica build` on Rubrica's own parser.
-- A theme with no script tag at all. Dark mode is CSS (`prefers-color-scheme`); the `/` search
+- A theme with no script of its own. Dark mode is CSS (`prefers-color-scheme`); the `/` search
   shortcut is dropped.
 - Syntax highlighting at build time.
 - Mermaid fences written as escaped source in `<pre><code class="language-mermaid">`.
-- `_search.json` written (no search page yet: a static site without WebAssembly has nothing to
-  run a query with).
-- A Linux x86_64 static binary and a single-architecture container image, as a GitHub release
-  with attestations. No crates.io publish yet.
+- Search: `rubrica-wasm` searches `_search.json` on the search page, through the one permitted
+  generated loader. The WebAssembly ships in a published bundle crate, and a
+  Content-Security-Policy that allows `'wasm-unsafe-eval'` and `connect-src 'self'` applies only
+  to the page that loads it, within a size budget.
+- Static binaries for Linux x86_64 and aarch64, macOS on Apple Silicon on a best-effort basis,
+  and a multi-architecture container image, as a GitHub release with attestations.
+- The ordered multi-crate publish (`rubrica-markdown`, `rubrica-render`, `rubrica-wasm-bundle`,
+  `rubrica-site`, `rubrica`), so `cargo install rubrica` works.
 
 Exit:
-- Gates: build, MSRV, the specification suite, linear-time tests, the no-JavaScript check
-  (zero `<script>`, zero `on*=` attributes, zero `javascript:` URLs, zero `.js`/`.mjs`/`.wasm`
-  files in a built site), render-diff, `cargo deny`, `cargo audit`, gitleaks, CodeQL, Scorecard.
+- Gates: build, MSRV, the specification suite, linear-time tests, render-diff, `cargo deny`,
+  `cargo audit`, gitleaks, CodeQL, Scorecard.
+- The no-JavaScript check: zero `on*=` attributes and zero `javascript:` URLs in a built site;
+  the only script is the loader whose hash equals the bundle's, on the search page only; every
+  `.wasm` is the bundle's bytes; no other `.js` or `.mjs` file; the bundle is reproducible.
 - A cap on the renderer's output size, tested with a crafted page at the page cap.
 - The attestation-verified release-candidate artifact has soaked for 24 hours.
-
-## 0.1.1: tiers
-
-Delivers: an aarch64 static binary, the multi-architecture image, macOS on Apple Silicon on a
-best-effort basis. The ordered multi-crate publish runs for the first time (`rubrica-markdown`,
-`rubrica-render`, `rubrica-site`, `rubrica`), so `cargo install rubrica` works.
-
-## 0.1.2: WebAssembly search
-
-Delivers: `rubrica-wasm` (search over `_search.json`), the one permitted generated loader, a
-published bundle crate carrying the WebAssembly, a Content-Security-Policy that allows
-`'wasm-unsafe-eval'` and `connect-src 'self'` only on pages that load it, and a size budget.
-
-Exit: the no-JavaScript check, extended: the only script is the loader whose hash equals the
-bundle's; every `.wasm` is the bundle's bytes; the bundle is reproducible.
 
 ## 0.1.x: diagrams
 

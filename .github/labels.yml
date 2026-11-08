@@ -36,6 +36,9 @@
 - name: wasm
   color: e99695
   description: The WebAssembly search bundle
+- name: diagrams
+  color: bfdadc
+  description: rubrica-diagram, Mermaid-style diagrams drawn as SVG at build time
 # status: where an issue stands
 - name: needs-triage
   color: d4c5f9

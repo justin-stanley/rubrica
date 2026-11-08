@@ -112,7 +112,7 @@ once the checks pass.
 
 ## Rules for the code
 
-- **No JavaScript.** Rubrica's pages carry none; the one exception, from 0.1.2, is the loader
+- **No JavaScript.** Rubrica's pages carry none; the one exception is the loader
   generated for Rubrica's own WebAssembly.
 - **No C or C++.** A dependency that compiles C or C++ (a `-sys` crate with a build script,
   `cc`, `cmake`, OpenSSL) is not accepted.

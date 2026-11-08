@@ -326,7 +326,7 @@ for k in wasm-named wasm-target wasm-cli wasm-bundle wasm-reproducible wasm-embe
   printf '%s\n' "$wasm_report" | grep -qxF "$k" || bad "the wasm bundle: $k does not hold"
 done
 
-# 12e. The platforms (0.1.1). The binary builds natively on three targets (the static
+# 12e. The platforms. The binary builds natively on three targets (the static
 # x86_64 and aarch64 Linux musl binaries and the unsigned macOS arm64 one), all three embed
 # byte-identical bundle files (built once by the wasm job, passed as an artifact, and
 # compared by sha256 before the build), and each tarball is attested. The image is built per

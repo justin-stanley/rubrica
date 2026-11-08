@@ -39,3 +39,10 @@ vulnerabilities are named here too (see [SECURITY.md](SECURITY.md)).
 - Bounds on every superlinear shape of input, each with a finding, and a test that time stays
   linear: 250,000 entries, 16 MiB of paths and 128 MiB of content per repository, 2 MiB per
   asset and 50 MB of assets, 4 MiB per page.
+- Search in the browser without a script of Rubrica's own: `rubrica-wasm` searches
+  `_search.json` on the search page, loaded by the generated loader whose hash the build checks,
+  under a Content-Security-Policy that allows WebAssembly on that page only. Every other page
+  keeps `script-src 'none'`.
+- Build-time syntax highlighting.
+- Releases for Linux x86_64 and aarch64 (static), macOS on Apple Silicon (best effort) and a
+  multi-architecture container image, each attested, from signed tags; the crates on crates.io.

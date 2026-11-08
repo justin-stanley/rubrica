@@ -458,7 +458,7 @@ chain_report=$(ruby -ryaml -e '
   rel = YAML.load_file(ARGV[0])["jobs"]
   ci = YAML.load_file(ARGV[1])["jobs"]
   chain = [
-    ["publish-markdown", "rubrica-markdown", "FIRST_PUBLISH_RUBRICA_MARKDOWN", []],
+    ["publish-markdown", "rubrica-markdown", "FIRST_PUBLISH_RUBRICA_MARKDOWN", ["build", "image"]],
     ["publish-render", "rubrica-render", "FIRST_PUBLISH_RUBRICA_RENDER", ["publish-markdown"]],
     ["publish-wasm-bundle", "rubrica-wasm-bundle", "FIRST_PUBLISH_RUBRICA_WASM_BUNDLE", ["publish-render", "wasm"]],
     ["publish-site", "rubrica-site", "FIRST_PUBLISH_RUBRICA_SITE", ["publish-wasm-bundle"]],

@@ -1,0 +1,45 @@
+[package]
+name = "rubrica"
+description = "A wiki renderer: check and build a Markdown repository into a static site."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+repository.workspace = true
+readme = "README.md"
+keywords = ["wiki", "markdown", "static-site", "cli"]
+categories = ["command-line-utilities", "web-programming"]
+
+[[bin]]
+name = "rubrica"
+path = "src/main.rs"
+
+[dependencies]
+clap.workspace = true
+rubrica-render.workspace = true
+rubrica-site.workspace = true
+# The search page's wasm bundle: `no_js` checks a built site against it (feature `search-wasm`).
+rubrica-wasm-bundle = { workspace = true, optional = true }
+rustix.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+gix.workspace = true
+toml.workspace = true
+
+[features]
+default = ["search-wasm"]
+# Sites carry the search page's wasm bundle (it needs the bundle's files:
+# scripts/build-wasm.sh --bundle). Without it a site has no script anywhere, and the
+# `no_js` auditor holds it to that.
+search-wasm = ["rubrica-site/search-wasm", "dep:rubrica-wasm-bundle"]
+
+[dev-dependencies]
+html5ever.workspace = true
+# The loader's digest in `no_js`.
+sha2.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

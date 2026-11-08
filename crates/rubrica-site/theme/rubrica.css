@@ -1,0 +1,554 @@
+/* Rubrica site theme: the launch page and the docs pages.
+   One file, no build step, no web fonts, no JavaScript.
+   Colour tokens and their contrast ratios are in site/DESIGN.md.
+   From site/theme/rubrica.css on the site/launch-page branch (5be9de6),
+   unchanged above "Wiki pages" below, which rubrica build adds for
+   the wiki: h1/h5/h6 in a body, recent changes, the pages list, and
+   highlight.js's token colours. */
+
+/* ---------- Tokens ---------- */
+
+:root {
+  color-scheme: light dark;
+
+  /* Light: ink on paper, one red and one blue, as a rubricator had. */
+  --paper: #ffffff;
+  --paper-2: #f3f4f6;      /* code */
+  --ink: #1d2126;          /* body text */
+  --ink-2: #545b64;        /* secondary text: descriptions, captions, meta */
+  --rule: #d5d9de;         /* hairlines; never carries meaning alone */
+  --rule-strong: #8a929c;  /* table and task-box borders (3:1 for UI) */
+  --rubric: #a3271c;       /* red ochre: heading marks, the logomark */
+  --link: #1d4f91;         /* links */
+  --link-hover: #123566;
+  --focus: #1d4f91;
+  --scroll-shadow: rgb(29 33 38 / 0.18); /* the edge of a table that scrolls */
+
+  /* Code colours, each at least 4.5:1 against --paper-2 (#f3f4f6); the ratio is after the value. */
+  --hl-meta: #1d2126;        /* 14.70 */
+  --hl-punctuation: #545b64; /* 6.24 */
+  --hl-variable: #9a2f5a;    /* 6.52 */
+  --hl-support: #0b6670;     /* 6.06 */
+  --hl-storage: #8a4400;     /* 6.56 */
+  --hl-entity: #1d4f91;      /* 7.40 */
+  --hl-constant: #6f3fa0;    /* 6.59 */
+  --hl-string: #1b6b3a;      /* 5.94 */
+  --hl-keyword: #a3271c;     /* 6.66 */
+  --hl-comment: #586069;     /* 5.80 */
+
+  /* Type */
+  --font-text: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", "Helvetica Neue", Arial, sans-serif;
+  --font-display: "Iowan Old Style", "Palatino Linotype", Palatino, "URW Palladio L", P052, "Book Antiqua", Georgia, serif;
+  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+
+  /* Scale: 17 px body, ratio 1.25 (major third), rounded to the pixel. */
+  --step--1: 0.875rem;   /* 14 px: meta, nav, captions */
+  --step-0: 1.0625rem;   /* 17 px: body */
+  --step-1: 1.3125rem;   /* 21 px: h3 */
+  --step-2: 1.625rem;    /* 26 px: h2 */
+  --step-3: 2.0625rem;   /* 33 px: docs h1 */
+  --step-4: clamp(2rem, 1.35rem + 3.2vw, 3.125rem); /* 32 to 50 px: launch h1 */
+
+  --measure: 40rem;      /* about 70 characters of body text */
+  --gutter: 16px;
+  --radius: 3px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #17191c;
+    --paper-2: #212429;
+    --ink: #e7e5e1;
+    --ink-2: #a9b0b8;
+    --rule: #353a41;
+    --rule-strong: #737c87;
+    --rubric: #f08c7c;
+    --link: #93b9f2;
+    --link-hover: #c3d8f7;
+    --focus: #93b9f2;
+    --scroll-shadow: rgb(0 0 0 / 0.6);
+
+    /* Against --paper-2 (#212429). */
+    --hl-meta: #e7e5e1;        /* 12.37 */
+    --hl-punctuation: #a9b0b8; /* 7.11 */
+    --hl-variable: #f09cc0;    /* 7.58 */
+    --hl-support: #7fd0d8;     /* 8.83 */
+    --hl-storage: #f0b072;     /* 8.27 */
+    --hl-entity: #93b9f2;      /* 7.76 */
+    --hl-constant: #c9a6f0;    /* 7.56 */
+    --hl-string: #8fd19e;      /* 8.73 */
+    --hl-keyword: #f08c7c;     /* 6.48 */
+    --hl-comment: #a0a8b2;     /* 6.48 */
+  }
+}
+
+/* ---------- Base ---------- */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font: var(--step-0)/1.6 var(--font-text);
+  overflow-wrap: break-word;
+}
+
+:target { scroll-margin-top: 1.5rem; }
+
+a { color: var(--link); text-decoration-thickness: 1px; text-underline-offset: 0.18em; }
+a:hover { color: var(--link-hover); text-decoration-thickness: 2px; }
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 1px;
+}
+
+.skip-link {
+  position: absolute;
+  left: var(--gutter);
+  top: -100px;
+  z-index: 10;
+  padding: 0.5rem 0.75rem;
+  background: var(--paper);
+  color: var(--link);
+  border: 2px solid var(--focus);
+}
+.skip-link:focus { top: var(--gutter); }
+
+
+/* ---------- Site header and footer ---------- */
+
+.site-header {
+  border-bottom: 1px solid var(--rule);
+}
+.site-header__inner,
+.site-footer__inner {
+  max-width: 76rem;
+  margin: 0 auto;
+  padding: 0.875rem var(--gutter);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1.5rem;
+}
+
+.wordmark {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--ink);
+  text-decoration: none;
+  font: 600 1.25rem/1 var(--font-display);
+  letter-spacing: 0.01em;
+}
+.wordmark:hover { color: var(--ink); }
+.wordmark svg { width: 0.95em; height: 1.2em; fill: var(--rubric); flex: none; }
+
+.site-nav ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1.25rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--step--1);
+}
+.site-nav a { color: var(--ink-2); text-decoration: none; }
+.site-nav a:hover { color: var(--ink); text-decoration: underline; }
+.site-nav a[aria-current] { color: var(--ink); text-decoration: underline; text-decoration-color: var(--rubric); text-decoration-thickness: 2px; }
+
+.site-footer {
+  margin-top: 4rem;
+  border-top: 1px solid var(--rule);
+  color: var(--ink-2);
+  font-size: var(--step--1);
+}
+.site-footer p { margin: 0; }
+.site-footer a { color: inherit; }
+
+/* ---------- Page layouts ---------- */
+
+/* Launch: one reading column; at 70rem and up a section list sits in the left margin. */
+/* Below 70rem the column is centred, so the pilcrows have a margin to hang in. */
+.launch {
+  max-width: calc(var(--measure) + 2 * var(--gutter));
+  margin: 0 auto;
+  padding: 0 var(--gutter);
+}
+.launch__body { max-width: var(--measure); }
+
+@media (min-width: 70rem) {
+  .launch {
+    display: grid;
+    grid-template-columns: 13rem minmax(0, var(--measure));
+    column-gap: 4rem;
+    justify-content: center;
+    max-width: 76rem;
+  }
+  .launch__hero { grid-column: 2; }
+  .launch__toc { grid-column: 1; grid-row: 2; }
+  .launch__body { grid-column: 2; grid-row: 2; }
+  .launch__toc nav { position: sticky; top: 1.5rem; }
+}
+
+/* Docs: site nav, page, page TOC. */
+.doc {
+  max-width: calc(var(--measure) + 2 * var(--gutter));
+  margin: 0 auto;
+  padding: 0 var(--gutter);
+}
+.doc__main { max-width: var(--measure); min-width: 0; }
+
+@media (min-width: 56rem) {
+  .doc {
+    max-width: 76rem;
+    display: grid;
+    justify-content: center;
+    grid-template-columns: 13rem minmax(0, var(--measure));
+    column-gap: 3rem;
+  }
+  .doc__nav { grid-column: 1; grid-row: 1 / span 2; }
+  .doc__toc { grid-column: 2; grid-row: 1; }
+  .doc__main { grid-column: 2; grid-row: 2; }
+}
+@media (min-width: 76rem) {
+  .doc { grid-template-columns: 13rem minmax(0, var(--measure)) 13rem; }
+  .doc__toc { grid-column: 3; grid-row: 1 / span 2; }
+  .doc__main { grid-row: 1 / span 2; }
+}
+
+/* ---------- Collapsible panels (nav and TOC on small screens) ---------- */
+
+.panel {
+  margin: 1.25rem 0 0;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  font-size: var(--step--1);
+}
+.panel > summary {
+  padding: 0.6rem 0.75rem;
+  cursor: pointer;
+  color: var(--ink-2);
+  font-weight: 600;
+}
+.panel > summary:hover { color: var(--ink); }
+.panel__body { padding: 0 0.75rem 0.75rem; }
+
+/* Without JavaScript a <details> cannot open by viewport width, so the docs
+   template writes the nav and the TOC twice: a collapsed panel for small
+   screens and a plain column for wide ones. The hidden copy is display:none,
+   so it is out of the accessibility tree too. */
+.doc__nav-wide, .doc__toc-wide { display: none; }
+@media (min-width: 56rem) {
+  .doc__nav-small { display: none; }
+  .doc__nav-wide { display: block; position: sticky; top: 1.5rem; margin-top: 1.25rem; max-height: calc(100vh - 3rem); overflow: auto; }
+}
+@media (min-width: 76rem) {
+  .doc__toc-small { display: none; }
+  .doc__toc-wide { display: block; position: sticky; top: 1.5rem; margin-top: 1.25rem; max-height: calc(100vh - 3rem); overflow: auto; }
+}
+
+/* ---------- Lists of links: site nav tree and tables of contents ---------- */
+
+.tree, .toc { margin: 0; padding: 0; list-style: none; font-size: var(--step--1); line-height: 1.45; }
+.tree ul, .toc ul { margin: 0; padding: 0 0 0 0.9rem; list-style: none; }
+.tree li, .toc li { margin: 0.35rem 0; }
+.tree a, .toc a { color: var(--ink-2); text-decoration: none; }
+.tree a:hover, .toc a:hover { color: var(--ink); text-decoration: underline; }
+.tree a[aria-current="page"] { color: var(--ink); font-weight: 600; }
+.tree .tree__section { display: block; margin-top: 1rem; color: var(--ink); font-weight: 600; }
+.tree > li:first-child > .tree__section { margin-top: 0; }
+
+.toc__title {
+  margin: 0 0 0.5rem;
+  font: 600 var(--step--1)/1.4 var(--font-text);
+  color: var(--ink);
+}
+
+/* The launch page's margin list: the same .toc, with a red rule. */
+.launch__toc .toc { border-left: 2px solid var(--rubric); padding-left: 0.9rem; }
+.launch__toc { display: none; }
+@media (min-width: 70rem) { .launch__toc { display: block; padding-top: 0.4rem; } }
+
+/* ---------- Hero ---------- */
+
+.hero {
+  max-width: var(--measure);
+  padding: 3rem 0 2.5rem;
+}
+@media (min-width: 70rem) { .hero { padding: 5rem 0 3.5rem; } }
+
+.hero h1 {
+  margin: 0;
+  font: 500 var(--step-4)/1.1 var(--font-display);
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+}
+.hero__lede {
+  margin: 1.25rem 0 0;
+  max-width: var(--measure);
+  font-size: 1.1875rem; /* 19 px */
+  line-height: 1.55;
+  color: var(--ink);
+}
+
+/* ---------- Prose ---------- */
+
+.prose > :first-child { margin-top: 0; }
+.prose p, .prose ul, .prose ol, .prose table, .prose pre, .prose blockquote { margin: 0 0 1.1rem; }
+.prose ul, .prose ol { padding-left: 1.4rem; }
+.prose li { margin: 0.3rem 0; }
+.prose li::marker { color: var(--ink-2); }
+
+/* The renderer wraps each heading in .heading, with the anchor link as the
+   heading's sibling, so the link is not part of the heading's name. */
+.prose .heading { position: relative; }
+.prose h2, .prose h3, .prose h4 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  color: var(--ink);
+  text-wrap: balance;
+}
+.prose h2, .prose .heading--2 { margin: 3rem 0 0.9rem; }
+.prose h3, .prose .heading--3 { margin: 2.25rem 0 0.6rem; }
+.prose h4, .prose .heading--4 { margin: 1.75rem 0 0.5rem; }
+.prose .heading > h2, .prose .heading > h3, .prose .heading > h4 { margin: 0; }
+.prose > .heading:first-child { margin-top: 0; }
+.prose h2 { font-size: var(--step-2); line-height: 1.2; }
+.prose h3 { font-size: var(--step-1); line-height: 1.3; }
+.prose h4 { font-size: var(--step-0); line-height: 1.4; }
+
+/* The rubric: every linkable heading carries a red pilcrow in the margin.
+   It is the heading's anchor link (Wiki.js puts a ¶ link in the same place),
+   so the motif is the feature: the anchors are the product. */
+.anchor {
+  position: absolute;
+  right: 100%;
+  top: 0;
+  padding-right: 0.3em;
+  color: var(--rubric);
+  font-family: var(--font-display);
+  text-decoration: none;
+}
+/* The mark is set in the heading's own size and line height, so it sits on
+   the heading's first baseline. */
+.heading--2 .anchor { font-size: var(--step-2); line-height: 1.2; }
+.heading--3 .anchor { font-size: var(--step-1); line-height: 1.3; }
+.heading--4 .anchor { font-size: var(--step-0); line-height: 1.4; }
+.anchor:hover { color: var(--rubric); text-decoration: none; opacity: 0.75; }
+/* Up to 46rem the column sits in a 16 px gutter (beyond it, the centred
+   column leaves a margin): room for a smaller mark, kept on the baseline by
+   a line height equal to the heading's line box. */
+@media (max-width: 46rem) {
+  .anchor { padding-right: 0.3em; }
+  .heading--2 .anchor { font-size: 1.125rem; line-height: 1.95rem; top: 0.12rem; }
+  .heading--3 .anchor { font-size: 0.95rem; line-height: 1.7rem; top: 0.08rem; }
+  .heading--4 .anchor { font-size: 0.85rem; line-height: 1.5rem; top: 0.05rem; }
+}
+
+.prose code, .prose kbd {
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  background: var(--paper-2);
+  border-radius: var(--radius);
+  padding: 0.1em 0.3em;
+}
+.prose pre {
+  overflow-x: auto;
+  padding: 0.9rem 1rem;
+  background: var(--paper-2);
+  border-radius: var(--radius);
+  line-height: 1.5;
+  font-size: 0.875rem;
+}
+.prose pre code { background: none; padding: 0; font-size: inherit; }
+
+/* Highlighted code: the build writes a span with one or two of these classes (the
+   top-level TextMate scopes). A span can carry several, so the later rule wins:
+   a comment's `//` is a comment. */
+.hl-meta { color: var(--hl-meta); }
+.hl-punctuation { color: var(--hl-punctuation); }
+.hl-variable { color: var(--hl-variable); }
+.hl-support { color: var(--hl-support); }
+.hl-storage { color: var(--hl-storage); }
+.hl-entity { color: var(--hl-entity); }
+.hl-constant { color: var(--hl-constant); }
+.hl-string { color: var(--hl-string); }
+.hl-keyword { color: var(--hl-keyword); }
+.hl-comment { color: var(--hl-comment); font-style: italic; }
+
+/* Mermaid: drawn in the browser by the vendored script; until then, the source. */
+.prose pre.mermaid { background: none; border: 1px solid var(--rule); }
+
+/* Tables scroll inside their wrapper, never the page. The table keeps
+   display: table, so it keeps its table role for screen readers. A table
+   wider than the column shows a shadow at the edge it can scroll towards:
+   the paper-coloured covers scroll with the content ("local") and hide the
+   shadows ("scroll") only when that edge is reached. */
+.prose .table-scroll {
+  overflow-x: auto;
+  margin: 0 0 1.1rem;
+  background:
+    linear-gradient(to right, var(--paper) 40%, transparent) left / 1.5rem 100% no-repeat local,
+    linear-gradient(to left, var(--paper) 40%, transparent) right / 1.5rem 100% no-repeat local,
+    radial-gradient(farthest-side at 0 50%, var(--scroll-shadow), transparent) left / 0.6rem 100% no-repeat scroll,
+    radial-gradient(farthest-side at 100% 50%, var(--scroll-shadow), transparent) right / 0.6rem 100% no-repeat scroll;
+}
+.prose .table-scroll > table { margin: 0; }
+.prose table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9375rem;
+  line-height: 1.45;
+}
+.prose th, .prose td {
+  padding: 0.5rem 0.9rem 0.5rem 0;
+  border-bottom: 1px solid var(--rule);
+  text-align: left;
+  vertical-align: top;
+}
+.prose th { font-weight: 600; border-bottom: 1px solid var(--rule-strong); }
+/* Code in a cell keeps to one line where there is room. On a narrow screen
+   it wraps (at spaces and after hyphens, so a slug breaks between words),
+   and a two-column table becomes two-line cells instead of scrolling. */
+.prose td code { white-space: nowrap; }
+@media (max-width: 40rem) {
+  .prose td code { white-space: normal; }
+  .prose th, .prose td { padding-right: 0.6rem; }
+}
+
+.prose blockquote {
+  margin-left: 0;
+  padding-left: 1rem;
+  border-left: 3px solid var(--rule-strong);
+  color: var(--ink-2);
+}
+.prose hr { border: 0; border-top: 1px solid var(--rule); margin: 2.5rem 0; }
+.prose img { max-width: 100%; height: auto; }
+
+/* Task lists, as the previous renderer writes them: the box is the list marker. */
+.prose .contains-task-list { list-style: none; padding-left: 0; }
+.prose .task-list-item { position: relative; padding-left: 1.65rem; }
+.prose .task-list-item-checkbox {
+  appearance: none;
+  flex: none;
+  width: 0.95rem;
+  height: 0.95rem;
+  margin: 0;
+  position: absolute;
+  left: 0;
+  top: 0.32em;
+  border: 1.5px solid var(--rule-strong);
+  border-radius: 2px;
+  background: var(--paper);
+}
+.prose .task-list-item-checkbox:checked {
+  border-color: var(--rubric);
+  background: var(--rubric);
+}
+.prose .task-list-item-checkbox:checked::after {
+  content: "";
+  position: absolute;
+  left: 0.27rem;
+  top: 0.06rem;
+  width: 0.25rem;
+  height: 0.5rem;
+  border: solid var(--paper);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+@media (forced-colors: active) {
+  .prose .task-list-item-checkbox { appearance: auto; position: static; margin-right: 0.4rem; }
+  .prose .task-list-item { padding-left: 0; }
+  .prose .task-list-item-checkbox:checked::after { content: none; }
+}
+
+/* ---------- Docs page parts ---------- */
+
+.breadcrumbs ol {
+  display: flex;
+  flex-wrap: wrap;
+  margin: 2.25rem 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--step--1);
+  color: var(--ink-2);
+}
+.breadcrumbs li + li::before { content: "/"; padding: 0 0.5em; color: var(--rule-strong); }
+.breadcrumbs a { color: var(--ink-2); }
+
+.doc-title { margin: 0.5rem 0 0; font: 600 var(--step-3)/1.15 var(--font-display); text-wrap: balance; }
+.doc-description { margin: 0.6rem 0 0; color: var(--ink-2); font-size: 1.1875rem; line-height: 1.5; }
+.doc-meta {
+  margin: 1rem 0 2rem;
+  padding-bottom: 1.25rem;
+  border-bottom: 1px solid var(--rule);
+  color: var(--ink-2);
+  font-size: var(--step--1);
+}
+.doc-meta p { margin: 0; }
+
+/* ---------- Follow progress (the launch page's call to action) ---------- */
+
+.follow { margin-top: 3rem; padding-top: 0.25rem; }
+.follow p { margin: 0 0 0.75rem; }
+.prose .follow__links { display: flex; flex-wrap: wrap; gap: 0.5rem 1.5rem; margin: 0; padding: 0; list-style: none; }
+
+/* ---------- Wiki pages (rubrica build) ---------- */
+
+/* A wiki page's own title is the h1 of its body. */
+.prose h1, .prose .heading--1 { margin: 2.25rem 0 0.9rem; }
+.prose .heading > h1 { margin: 0; }
+.prose h1 { font: 600 var(--step-3)/1.15 var(--font-display); text-wrap: balance; }
+.heading--1 .anchor { font-size: var(--step-3); line-height: 1.15; }
+.prose h5, .prose h6 { font-family: var(--font-display); font-weight: 600; font-size: var(--step-0); }
+.prose h5, .prose .heading--5, .prose h6, .prose .heading--6 { margin: 1.5rem 0 0.5rem; }
+.prose .heading > h5, .prose .heading > h6 { margin: 0; }
+.heading--5 .anchor, .heading--6 .anchor { font-size: var(--step-0); line-height: 1.6; }
+@media (max-width: 46rem) {
+  .heading--1 .anchor { font-size: 1.25rem; line-height: 2.4rem; top: 0.1rem; }
+  .heading--5 .anchor, .heading--6 .anchor { font-size: 0.85rem; line-height: 1.6rem; }
+}
+
+.doc-meta a { color: var(--ink-2); }
+
+.recent, .all-pages { padding-left: 0; list-style: none; }
+.recent > li { margin: 0 0 1.25rem; }
+.recent time, .recent code { color: var(--ink-2); font-size: var(--step--1); }
+.recent ul { margin: 0.3rem 0 0; padding-left: 1.2rem; }
+.all-pages { columns: 2 16rem; }
+.all-pages li { break-inside: avoid; }
+
+.prose pre.mermaid svg { max-width: 100%; height: auto; }
+
+/* highlight.js's classes (its ES module build, vendored): the theme's ink,
+   red and blue, so both schemes come from the tokens above. */
+.hljs-comment, .hljs-quote, .hljs-meta { color: var(--ink-2); font-style: italic; }
+.hljs-keyword, .hljs-selector-tag, .hljs-built_in, .hljs-type, .hljs-literal { color: var(--rubric); }
+.hljs-string, .hljs-regexp, .hljs-symbol, .hljs-template-variable, .hljs-addition { color: var(--link); }
+.hljs-number, .hljs-variable, .hljs-attr, .hljs-attribute, .hljs-params { color: var(--link-hover); }
+.hljs-title, .hljs-section, .hljs-name, .hljs-selector-id, .hljs-selector-class { font-weight: 600; }
+.hljs-deletion { color: var(--rubric); }
+.hljs-emphasis { font-style: italic; }
+.hljs-strong { font-weight: 700; }
+
+/* ---------- Motion and print ---------- */
+
+@media (prefers-reduced-motion: no-preference) {
+  html { scroll-behavior: smooth; }
+}
+
+@media print {
+  .site-header, .site-footer, .launch__toc, .doc__nav, .doc__toc, .skip-link { display: none; }
+  .anchor { display: none; }
+  body { font-size: 11pt; }
+}

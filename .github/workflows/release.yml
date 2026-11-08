@@ -1,0 +1,844 @@
+name: Release
+# A `vX.Y.Z` or `vX.Y.Z-rc.N` tag builds and publishes a release:
+#
+# * `verify`: the tag is an annotated tag with an SSH signature from a key listed in
+#   .github/allowed_signers (scripts/verify-release-tag.sh). Anyone who can push a tag starts
+#   this workflow; only a tag the owner signed gets past this job, and every other job needs it.
+# * `check`: the tag is the workspace version, its commit is on `main`, the changelog has the
+#   notes for it, the gate passes, and the candidate renders the same sites as the previous
+#   final release (the upgrade test: the release's sha256 and attestation are verified
+#   first; a deliberate difference is declared with a `- Render change:` changelog line).
+# * `wasm`: the search page's wasm bundle, built once (rubrica-site embeds it; its sha256 and
+#   the wasm-bindgen CLI's go in the job summary; the bundle crate is packed and the .wasm and
+#   the .crate are attested). The bundle does not depend on the platform: every binary build
+#   downloads these files and checks their sha256 before it compiles, so all three embed
+#   byte-identical bundle files.
+# * `build`: the binary, natively on each runner, no cross compiler: the static
+#   x86_64-unknown-linux-musl and aarch64-unknown-linux-musl binaries (ubuntu-latest and
+#   ubuntu-24.04-arm), built reproducibly (the checkout and the cargo home are remapped out of
+#   them; the tarball has a fixed owner, mode, order and mtime), and the aarch64-apple-darwin
+#   binary (macos-14), best effort: unsigned and not notarised. Each is audited for script on
+#   a site it built, packed, and attested.
+# * `image-build`, `image`: a distroless image per platform (linux/amd64 on ubuntu-latest,
+#   linux/arm64 on ubuntu-24.04-arm) made from that platform's attested binary and pushed to
+#   GHCR by digest; then one multi-architecture manifest tagged with the version (and `latest`
+#   for a final release), whose digest has its own attestation.
+# * `publish-markdown`, `publish-render`, `publish-wasm-bundle`, `publish-site`, `publish-bin`:
+#   the five crates to crates.io, one job each, in the order they depend on each other (the
+#   bundle crate before `rubrica-site`, which embeds it). Each runs under the `crates-io`
+#   environment, which needs the maintainer's approval, and never for a candidate tag. Each
+#   skips a crate that is already published at this version, so a failed chain is re-run;
+#   packs it (scripts/package-check.sh: the file list is the committed PACKAGE-FILES, the
+#   .crate is under crates.io's size limit, the unpacked crate builds alone); publishes it with
+#   Trusted Publishing (the first publish of a crate with a one-day token instead); downloads
+#   what crates.io now serves and compares its sha256 with the packed .crate; and attests the
+#   .crate. The bundle crate publishes the .crate the `wasm` job packed and attested, after
+#   checking that packing it again gives the same bytes.
+# * `release`: the GitHub release (a pre-release for a candidate), created under the `release`
+#   environment, which needs the maintainer's approval. It waits for the last publish job, so a
+#   release never exists without its crates.
+#
+# The workflow cannot be tried locally; its shape is pinned by tools/public-workflows-check.sh,
+# and its first real run is a candidate tag (which publishes no crate).
+#
+# Verify a download with:
+#   gh attestation verify rubrica-X.Y.Z-<platform>.tar.gz --repo justin-stanley/rubrica
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_DENY_VERSION: 0.20.2
+  CARGO_AUDIT_VERSION: 0.22.2
+  IMAGE: ghcr.io/justin-stanley/rubrica
+
+jobs:
+  verify:
+    name: Verify the tag signature
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: The tag is annotated and signed by a listed key
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          # The checkout of a tag may hold a lightweight copy of it: fetch the tag object itself.
+          git fetch --force origin "refs/tags/$TAG:refs/tags/$TAG"
+          scripts/verify-release-tag.sh "$TAG"
+
+  check:
+    name: Check the tag
+    needs: verify
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.tag.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0 # to check the tag is on main
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
+      - name: The tag is the workspace version, on main, with release notes
+        id: tag
+        env:
+          TAG: ${{ github.ref_name }}
+          REF_TYPE: ${{ github.ref_type }}
+        run: |
+          set -euo pipefail
+          [ "$REF_TYPE" = tag ] || { echo "::error::run this on a tag, not $REF_TYPE $TAG"; exit 1; }
+          version=$(cargo pkgid --locked -p rubrica | sed 's/.*[#@]//')
+          [ "$TAG" = "v$version" ] || { echo "::error::tag $TAG is not v$version, the version in Cargo.toml"; exit 1; }
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main \
+            || { echo "::error::tag $TAG ($GITHUB_SHA) is not on main: release from main only"; exit 1; }
+          scripts/release-notes.sh "$version" > notes.md
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: notes
+          path: notes.md
+          if-no-files-found: error
+      - name: The wasm target and the wasm-bindgen CLI, pinned (the bundle rubrica-site embeds)
+        run: |
+          set -euo pipefail
+          rustup target add wasm32-unknown-unknown
+          cargo install wasm-bindgen-cli@0.2.126 --locked
+      - name: scripts/ci.sh
+        env:
+          RUBRICA_CI_SPLIT: "1" # deny and audit run just below
+        run: scripts/ci.sh
+      - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2
+        with:
+          tool: cargo-deny@${{ env.CARGO_DENY_VERSION }},cargo-audit@${{ env.CARGO_AUDIT_VERSION }}
+      - name: cargo deny and cargo audit
+        run: |
+          set -euo pipefail
+          cargo deny check bans licenses sources
+          # bincode 1.x via syntect's dump-load: the syntax dump is a build-time embedded blob, never input
+          cargo audit -D warnings --ignore RUSTSEC-2025-0141
+      - name: The candidate binary
+        run: cargo build --locked --release -p rubrica
+      - name: The upgrade test, the candidate against the previous release
+        # Downloads the previous final release, checks its sha256 and attestation, and
+        # renders the specification repository and docs/ with both binaries; a difference
+        # fails unless the changelog notes hold a `- Render change:` line.
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.tag.outputs.version }}
+        run: |
+          set -euo pipefail
+          tools/upgrade-check.sh target/release/rubrica "$VERSION"
+
+  wasm:
+    name: Build and attest the wasm bundle
+    needs: check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # the attestation
+      attestations: write
+    outputs:
+      wasm: ${{ steps.sums.outputs.wasm }}
+      loader: ${{ steps.sums.outputs.loader }}
+      meta: ${{ steps.sums.outputs.meta }}
+    env:
+      VERSION: ${{ needs.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
+      - name: The wasm target and the wasm-bindgen CLI, pinned (the bundle rubrica-site embeds)
+        run: |
+          set -euo pipefail
+          rustup target add wasm32-unknown-unknown
+          cargo install wasm-bindgen-cli@0.2.126 --locked
+      - name: The wasm bundle, its sha256 and the CLI's, and the bundle crate
+        # `--allow-dirty`: the bundle's files are git-ignored; PACKAGE-FILES pins what ships.
+        id: sums
+        run: |
+          set -euo pipefail
+          scripts/build-wasm.sh --bundle
+          cargo package --locked --allow-dirty -p rubrica-wasm-bundle
+          src=crates/rubrica-wasm-bundle/src
+          {
+            echo "wasm=$(sha256sum "$src/rubrica-search_bg.wasm" | cut -d' ' -f1)"
+            echo "loader=$(sha256sum "$src/rubrica-search.js" | cut -d' ' -f1)"
+            echo "meta=$(sha256sum "$src/meta.rs" | cut -d' ' -f1)"
+          } >> "$GITHUB_OUTPUT"
+          {
+            echo '### The wasm search bundle'
+            echo
+            echo '```'
+            sha256sum "$src/rubrica-search_bg.wasm" "$src/rubrica-search.js" "$src/meta.rs"
+            sha256sum "target/package/rubrica-wasm-bundle-$VERSION.crate"
+            echo "$(wasm-bindgen --version): $(sha256sum "$(command -v wasm-bindgen)" | cut -d' ' -f1)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: wasm-bundle
+          path: |
+            crates/rubrica-wasm-bundle/src/rubrica-search_bg.wasm
+            crates/rubrica-wasm-bundle/src/rubrica-search.js
+            crates/rubrica-wasm-bundle/src/meta.rs
+          if-no-files-found: error
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: wasm-bundle-crate
+          path: target/package/rubrica-wasm-bundle-${{ needs.check.outputs.version }}.crate
+          if-no-files-found: error
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            crates/rubrica-wasm-bundle/src/rubrica-search_bg.wasm
+            target/package/rubrica-wasm-bundle-${{ needs.check.outputs.version }}.crate
+
+  build:
+    name: Build and attest the binary (${{ matrix.short }})
+    needs: [check, wasm]
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      id-token: write # the attestation
+      attestations: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            runner: ubuntu-latest
+            static: true
+            short: x86_64-linux-musl
+          - target: aarch64-unknown-linux-musl
+            runner: ubuntu-24.04-arm
+            static: true
+            short: aarch64-linux-musl
+          - target: aarch64-apple-darwin
+            runner: macos-14
+            static: false
+            short: aarch64-apple-darwin
+    env:
+      VERSION: ${{ needs.check.outputs.version }}
+      TARGET: ${{ matrix.target }}
+      SHORT: ${{ matrix.short }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
+        with:
+          targets: ${{ matrix.target }}
+      # The wasm job's bundle: rubrica-site embeds it, and it is never committed.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: wasm-bundle
+          path: crates/rubrica-wasm-bundle/src
+      - name: The bundle files are the ones the wasm job built and attested
+        env:
+          WANT_WASM: ${{ needs.wasm.outputs.wasm }}
+          WANT_LOADER: ${{ needs.wasm.outputs.loader }}
+          WANT_META: ${{ needs.wasm.outputs.meta }}
+        run: |
+          set -euo pipefail
+          src=crates/rubrica-wasm-bundle/src
+          check() {
+            got=$(shasum -a 256 "$src/$1" | cut -d' ' -f1)
+            [ -n "$2" ] && [ "$got" = "$2" ] || { echo "::error::$1 is $got, the wasm job built $2"; exit 1; }
+          }
+          check rubrica-search_bg.wasm "$WANT_WASM"
+          check rubrica-search.js "$WANT_LOADER"
+          check meta.rs "$WANT_META"
+      - name: Build
+        # The checkout's path and the cargo home (the dependencies' sources) would otherwise
+        # be in the binary, in panic locations: both are remapped to fixed names, so the
+        # build does not depend on where it ran. The cargo home is spelled
+        # ${CARGO_HOME:-$HOME/.cargo}: CARGO_HOME is unset in some steps, and an empty
+        # prefix would remap nothing and break reproducibility without a failure.
+        run: |
+          set -euo pipefail
+          cargo_home="${CARGO_HOME:-$HOME/.cargo}"
+          RUSTFLAGS="--remap-path-prefix=$PWD=/rubrica --remap-path-prefix=$cargo_home=/cargo" \
+            cargo build --release --locked --target "$TARGET" -p rubrica
+      - name: The Linux binary is static
+        if: matrix.static
+        run: |
+          set -euo pipefail
+          bin="target/$TARGET/release/rubrica"
+          # Static: no program interpreter, so it runs on any Linux of its architecture with no libc.
+          if readelf -l "$bin" | grep -q INTERP; then
+            echo "::error::$bin has a program interpreter: not static"; readelf -l "$bin"; exit 1
+          fi
+      - name: The macOS binary links only system libraries
+        if: ${{ !matrix.static }}
+        run: |
+          set -euo pipefail
+          bin="target/$TARGET/release/rubrica"
+          # The rule is the directory, not one file name: every path otool prints is under /usr/lib/.
+          otool -L "$bin"
+          other=$(otool -L "$bin" | tail -n +2 | awk '{print $1}' | grep -v '^/usr/lib/' || [ $? -eq 1 ])
+          [ -z "$other" ] || { echo "::error::$bin links outside /usr/lib/: $other"; exit 1; }
+      - name: The binary runs, and checks and builds the documentation
+        run: |
+          set -euo pipefail
+          bin="target/$TARGET/release/rubrica"
+          "$bin" --version | grep -F "$VERSION"
+          "$bin" check --strict docs
+          "$bin" build --subtree docs . site
+      - name: The site this binary built has no script
+        env:
+          RUBRICA_NO_JS_SITE: ${{ github.workspace }}/site
+        run: cargo test --locked -p rubrica --test no_js an_external_site_has_no_script
+      - name: Package
+        run: |
+          set -euo pipefail
+          name="rubrica-$VERSION-$SHORT"
+          bin="target/$TARGET/release/rubrica"
+          # GNU tar for the fixed owner, mode and order: it is `gtar` on macOS.
+          tar_cmd=$(command -v gtar || command -v tar)
+          "$tar_cmd" --version | grep -q 'GNU tar' || { echo "::error::no GNU tar"; exit 1; }
+          mkdir -p "dist/$name"
+          cp "$bin" LICENSE NOTICE README.md "dist/$name/"
+          # Reproducible packing: a fixed owner, mode, order and mtime (the commit's), and no
+          # gzip name or timestamp.
+          mtime=$(git log -1 --format=%ct)
+          "$tar_cmd" -C dist --owner=0 --group=0 --numeric-owner --sort=name --mode='go-w,a+rX' \
+            --mtime="@$mtime" -cf - "$name" | gzip -n > "dist/$name.tar.gz"
+          (cd dist && shasum -a 256 "$name.tar.gz" > "$name.tar.gz.sha256")
+          cat "dist/$name.tar.gz.sha256"
+          rm -rf "dist/$name"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dist-${{ matrix.short }}
+          path: dist/
+          if-no-files-found: error
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: dist/rubrica-${{ needs.check.outputs.version }}-${{ matrix.short }}.tar.gz
+
+  image-build:
+    name: Build the image (${{ matrix.platform }})
+    needs: [check, build]
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write # push to GHCR
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+            short: x86_64-linux-musl
+            pair: amd64
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+            short: aarch64-linux-musl
+            pair: arm64
+    env:
+      VERSION: ${{ needs.check.outputs.version }}
+      SHORT: ${{ matrix.short }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist-${{ matrix.short }}
+          path: dist
+      - name: Take the binary from the attested tarball
+        run: |
+          set -euo pipefail
+          name="rubrica-$VERSION-$SHORT"
+          (cd dist && shasum -a 256 -c "$name.tar.gz.sha256")
+          tar -xzf "dist/$name.tar.gz" --strip-components=1 "$name/rubrica"
+          ./rubrica --version | grep -F "$VERSION"
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push by digest, untagged (the manifest job tags the joined image)
+        id: push
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: Dockerfile
+          # One platform per job, built on a runner of that architecture.
+          platforms: ${{ matrix.platform }}
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          provenance: true
+          sbom: true
+      - name: The pushed image runs, on a read-only root filesystem
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          set -euo pipefail
+          docker run --rm --read-only "$IMAGE@$DIGEST" --version | grep -F "$VERSION"
+          mkdir -p /tmp/digests
+          touch "/tmp/digests/${DIGEST#sha256:}"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: digest-${{ matrix.pair }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  image:
+    name: Join and attest the multi-architecture image
+    needs: [check, image-build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write # tag the manifest in GHCR
+      id-token: write # the attestation
+      attestations: write
+    env:
+      VERSION: ${{ needs.check.outputs.version }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: digest-*
+          merge-multiple: true
+          path: /tmp/digests
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Join the per-platform images into one tagged manifest
+        id: join
+        working-directory: /tmp/digests
+        run: |
+          set -euo pipefail
+          set -- *
+          [ "$#" -eq 2 ] || { echo "::error::want 2 platform digests (amd64, arm64), have: $*"; exit 1; }
+          tags=(-t "$IMAGE:$VERSION")
+          # :latest follows final releases only, never a candidate.
+          case "$VERSION" in *-*) ;; *) tags+=(-t "$IMAGE:latest") ;; esac
+          refs=()
+          for d in "$@"; do refs+=("$IMAGE@sha256:$d"); done
+          docker buildx imagetools create "${tags[@]}" "${refs[@]}"
+          digest=$(docker buildx imagetools inspect "$IMAGE:$VERSION" --format '{{json .Manifest}}' | jq -r .digest)
+          case "$digest" in sha256:*) ;; *) echo "::error::no manifest digest: $digest"; exit 1 ;; esac
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+      - name: The manifest lists both platforms, and runs on a read-only root filesystem
+        env:
+          DIGEST: ${{ steps.join.outputs.digest }}
+        run: |
+          set -euo pipefail
+          docker buildx imagetools inspect "$IMAGE@$DIGEST" | tee inspect.txt
+          grep -F 'linux/amd64' inspect.txt
+          grep -F 'linux/arm64' inspect.txt
+          docker run --rm --read-only "$IMAGE@$DIGEST" --version | grep -F "$VERSION"
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ghcr.io/justin-stanley/rubrica
+          subject-digest: ${{ steps.join.outputs.digest }}
+          push-to-registry: true
+
+  publish-markdown:
+    name: Publish rubrica-markdown to crates.io
+    needs: check
+    if: ${{ !contains(github.ref_name, '-rc.') }}
+    runs-on: ubuntu-latest
+    environment: crates-io # requires the maintainer's approval
+    permissions:
+      contents: read
+      id-token: write # crates.io Trusted Publishing, and the attestation
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
+      - name: Is rubrica-markdown already on crates.io at this version?
+        id: seen
+        run: |
+          set -euo pipefail
+          V=$(cargo pkgid --locked -p rubrica-markdown | sed 's/.*[#@]//')
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          code=$(curl -s -o /dev/null -w '%{http_code}' -A 'rubrica-release (https://github.com/justin-stanley/rubrica)' "https://crates.io/api/v1/crates/rubrica-markdown/$V")
+          case "$code" in
+            200) echo "rubrica-markdown $V is already published"; echo "published=true" >> "$GITHUB_OUTPUT" ;;
+            404) echo "published=false" >> "$GITHUB_OUTPUT" ;;
+            *) echo "::error::crates.io answered $code for rubrica-markdown $V"; exit 1 ;;
+          esac
+      - name: Pack rubrica-markdown (file list, size, and the unpacked crate builds alone)
+        if: ${{ steps.seen.outputs.published != 'true' }}
+        run: scripts/package-check.sh rubrica-markdown
+      - uses: rust-lang/crates-io-auth-action@3268eb413133e2960fa4ae0e963ca76380c54cd9 # v1.0.6
+        id: auth
+        if: ${{ steps.seen.outputs.published != 'true' && vars.FIRST_PUBLISH_RUBRICA_MARKDOWN != 'true' }}
+      - name: Publish rubrica-markdown
+        if: ${{ steps.seen.outputs.published != 'true' }}
+        env:
+          # The first publish of a crate has no Trusted Publishing configuration yet: the owner
+          # sets FIRST_PUBLISH_RUBRICA_MARKDOWN and the CRATES_IO_PUBLISH_NEW secret for one day.
+          CARGO_REGISTRY_TOKEN: ${{ vars.FIRST_PUBLISH_RUBRICA_MARKDOWN == 'true' && secrets.CRATES_IO_PUBLISH_NEW || steps.auth.outputs.token }}
+        # --no-verify: package-check built the unpacked crate. --allow-dirty: the bundle crate's files are
+        # git-ignored; the checkout is otherwise clean, and the check below compares the bytes.
+        run: cargo publish --locked --no-verify -p rubrica-markdown --allow-dirty
+      - name: crates.io holds exactly the bytes that were packed
+        if: ${{ steps.seen.outputs.published != 'true' }}
+        env:
+          V: ${{ steps.seen.outputs.version }}
+        run: |
+          set -euo pipefail
+          want=$(sha256sum "target/package/rubrica-markdown-$V.crate" | cut -d' ' -f1)
+          # The download appears a little after the publish returns.
+          for i in $(seq 12); do
+            curl -sfL -o crates-io.crate "https://static.crates.io/crates/rubrica-markdown/rubrica-markdown-$V.crate" && break
+            [ "$i" -lt 12 ] || { echo "::error::rubrica-markdown $V is not downloadable from crates.io"; exit 1; }
+            sleep 10
+          done
+          got=$(sha256sum crates-io.crate | cut -d' ' -f1)
+          [ "$got" = "$want" ] || { echo "::error::crates.io holds $got for rubrica-markdown $V, packed $want"; exit 1; }
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        if: ${{ steps.seen.outputs.published != 'true' }}
+        with:
+          subject-path: target/package/rubrica-markdown-${{ steps.seen.outputs.version }}.crate
+
+  publish-render:
+    name: Publish rubrica-render to crates.io
+    needs: publish-markdown
+    if: ${{ !contains(github.ref_name, '-rc.') }}
+    runs-on: ubuntu-latest
+    environment: crates-io # requires the maintainer's approval
+    permissions:
+      contents: read
+      id-token: write # crates.io Trusted Publishing, and the attestation
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
+      - name: Is rubrica-render already on crates.io at this version?
+        id: seen
+        run: |
+          set -euo pipefail
+          V=$(cargo pkgid --locked -p rubrica-render | sed 's/.*[#@]//')
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          code=$(curl -s -o /dev/null -w '%{http_code}' -A 'rubrica-release (https://github.com/justin-stanley/rubrica)' "https://crates.io/api/v1/crates/rubrica-render/$V")
+          case "$code" in
+            200) echo "rubrica-render $V is already published"; echo "published=true" >> "$GITHUB_OUTPUT" ;;
+            404) echo "published=false" >> "$GITHUB_OUTPUT" ;;
+            *) echo "::error::crates.io answered $code for rubrica-render $V"; exit 1 ;;
+          esac
+      - name: Pack rubrica-render (file list, size, and the unpacked crate builds alone)
+        if: ${{ steps.seen.outputs.published != 'true' }}
+        run: scripts/package-check.sh rubrica-render
+      - uses: rust-lang/crates-io-auth-action@3268eb413133e2960fa4ae0e963ca76380c54cd9 # v1.0.6
+        id: auth
+        if: ${{ steps.seen.outputs.published != 'true' && vars.FIRST_PUBLISH_RUBRICA_RENDER != 'true' }}
+      - name: Publish rubrica-render
+        if: ${{ steps.seen.outputs.published != 'true' }}
+        env:
+          # The first publish of a crate has no Trusted Publishing configuration yet: the owner
+          # sets FIRST_PUBLISH_RUBRICA_RENDER and the CRATES_IO_PUBLISH_NEW secret for one day.
+          CARGO_REGISTRY_TOKEN: ${{ vars.FIRST_PUBLISH_RUBRICA_RENDER == 'true' && secrets.CRATES_IO_PUBLISH_NEW || steps.auth.outputs.token }}
+        # --no-verify: package-check built the unpacked crate. --allow-dirty: the bundle crate's files are
+        # git-ignored; the checkout is otherwise clean, and the check below compares the bytes.
+        run: cargo publish --locked --no-verify -p rubrica-render --allow-dirty
+      - name: crates.io holds exactly the bytes that were packed
+        if: ${{ steps.seen.outputs.published != 'true' }}
+        env:
+          V: ${{ steps.seen.outputs.version }}
+        run: |
+          set -euo pipefail
+          want=$(sha256sum "target/package/rubrica-render-$V.crate" | cut -d' ' -f1)
+          # The download appears a little after the publish returns.
+          for i in $(seq 12); do
+            curl -sfL -o crates-io.crate "https://static.crates.io/crates/rubrica-render/rubrica-render-$V.crate" && break
+            [ "$i" -lt 12 ] || { echo "::error::rubrica-render $V is not downloadable from crates.io"; exit 1; }
+            sleep 10
+          done
+          got=$(sha256sum crates-io.crate | cut -d' ' -f1)
+          [ "$got" = "$want" ] || { echo "::error::crates.io holds $got for rubrica-render $V, packed $want"; exit 1; }
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        if: ${{ steps.seen.outputs.published != 'true' }}
+        with:
+          subject-path: target/package/rubrica-render-${{ steps.seen.outputs.version }}.crate
+
+  publish-wasm-bundle:
+    name: Publish rubrica-wasm-bundle to crates.io
+    needs: [publish-render, wasm]
+    if: ${{ !contains(github.ref_name, '-rc.') }}
+    runs-on: ubuntu-latest
+    environment: crates-io # requires the maintainer's approval
+    permissions:
+      contents: read
+      id-token: write # crates.io Trusted Publishing, and the attestation
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
+      - name: Is rubrica-wasm-bundle already on crates.io at this version?
+        id: seen
+        run: |
+          set -euo pipefail
+          V=$(cargo pkgid --locked -p rubrica-wasm-bundle | sed 's/.*[#@]//')
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          code=$(curl -s -o /dev/null -w '%{http_code}' -A 'rubrica-release (https://github.com/justin-stanley/rubrica)' "https://crates.io/api/v1/crates/rubrica-wasm-bundle/$V")
+          case "$code" in
+            200) echo "rubrica-wasm-bundle $V is already published"; echo "published=true" >> "$GITHUB_OUTPUT" ;;
+            404) echo "published=false" >> "$GITHUB_OUTPUT" ;;
+            *) echo "::error::crates.io answered $code for rubrica-wasm-bundle $V"; exit 1 ;;
+          esac
+      # The wasm job's bundle and the .crate it packed and attested: this job publishes those
+      # bytes, so what crates.io holds is what the attestation covers.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: ${{ steps.seen.outputs.published != 'true' }}
+        with:
+          name: wasm-bundle
+          path: crates/rubrica-wasm-bundle/src
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: ${{ steps.seen.outputs.published != 'true' }}
+        with:
+          name: wasm-bundle-crate
+          path: attested
+      - name: Pack rubrica-wasm-bundle; the bytes must be the attested ones
+        if: ${{ steps.seen.outputs.published != 'true' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          V: ${{ steps.seen.outputs.version }}
+        run: |
+          set -euo pipefail
+          gh attestation verify "attested/rubrica-wasm-bundle-$V.crate" --repo "$GITHUB_REPOSITORY"
+          scripts/package-check.sh rubrica-wasm-bundle
+          cmp "target/package/rubrica-wasm-bundle-$V.crate" "attested/rubrica-wasm-bundle-$V.crate" \
+            || { echo "::error::the packed crate is not the one the wasm job attested"; exit 1; }
+      - uses: rust-lang/crates-io-auth-action@3268eb413133e2960fa4ae0e963ca76380c54cd9 # v1.0.6
+        id: auth
+        if: ${{ steps.seen.outputs.published != 'true' && vars.FIRST_PUBLISH_RUBRICA_WASM_BUNDLE != 'true' }}
+      - name: Publish rubrica-wasm-bundle
+        if: ${{ steps.seen.outputs.published != 'true' }}
+        env:
+          # The first publish of a crate has no Trusted Publishing configuration yet: the owner
+          # sets FIRST_PUBLISH_RUBRICA_WASM_BUNDLE and the CRATES_IO_PUBLISH_NEW secret for one day.
+          CARGO_REGISTRY_TOKEN: ${{ vars.FIRST_PUBLISH_RUBRICA_WASM_BUNDLE == 'true' && secrets.CRATES_IO_PUBLISH_NEW || steps.auth.outputs.token }}
+        # --no-verify: package-check built the unpacked crate. --allow-dirty: the bundle crate's files are
+        # git-ignored; the checkout is otherwise clean, and the check below compares the bytes.
+        run: cargo publish --locked --no-verify -p rubrica-wasm-bundle --allow-dirty
+      - name: crates.io holds exactly the bytes that were packed
+        if: ${{ steps.seen.outputs.published != 'true' }}
+        env:
+          V: ${{ steps.seen.outputs.version }}
+        run: |
+          set -euo pipefail
+          want=$(sha256sum "target/package/rubrica-wasm-bundle-$V.crate" | cut -d' ' -f1)
+          # The download appears a little after the publish returns.
+          for i in $(seq 12); do
+            curl -sfL -o crates-io.crate "https://static.crates.io/crates/rubrica-wasm-bundle/rubrica-wasm-bundle-$V.crate" && break
+            [ "$i" -lt 12 ] || { echo "::error::rubrica-wasm-bundle $V is not downloadable from crates.io"; exit 1; }
+            sleep 10
+          done
+          got=$(sha256sum crates-io.crate | cut -d' ' -f1)
+          [ "$got" = "$want" ] || { echo "::error::crates.io holds $got for rubrica-wasm-bundle $V, packed $want"; exit 1; }
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        if: ${{ steps.seen.outputs.published != 'true' }}
+        with:
+          subject-path: target/package/rubrica-wasm-bundle-${{ steps.seen.outputs.version }}.crate
+
+  publish-site:
+    name: Publish rubrica-site to crates.io
+    needs: publish-wasm-bundle
+    if: ${{ !contains(github.ref_name, '-rc.') }}
+    runs-on: ubuntu-latest
+    environment: crates-io # requires the maintainer's approval
+    permissions:
+      contents: read
+      id-token: write # crates.io Trusted Publishing, and the attestation
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
+      - name: Is rubrica-site already on crates.io at this version?
+        id: seen
+        run: |
+          set -euo pipefail
+          V=$(cargo pkgid --locked -p rubrica-site | sed 's/.*[#@]//')
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          code=$(curl -s -o /dev/null -w '%{http_code}' -A 'rubrica-release (https://github.com/justin-stanley/rubrica)' "https://crates.io/api/v1/crates/rubrica-site/$V")
+          case "$code" in
+            200) echo "rubrica-site $V is already published"; echo "published=true" >> "$GITHUB_OUTPUT" ;;
+            404) echo "published=false" >> "$GITHUB_OUTPUT" ;;
+            *) echo "::error::crates.io answered $code for rubrica-site $V"; exit 1 ;;
+          esac
+      - name: Pack rubrica-site (file list, size, and the unpacked crate builds alone)
+        if: ${{ steps.seen.outputs.published != 'true' }}
+        run: scripts/package-check.sh rubrica-site
+      - uses: rust-lang/crates-io-auth-action@3268eb413133e2960fa4ae0e963ca76380c54cd9 # v1.0.6
+        id: auth
+        if: ${{ steps.seen.outputs.published != 'true' && vars.FIRST_PUBLISH_RUBRICA_SITE != 'true' }}
+      - name: Publish rubrica-site
+        if: ${{ steps.seen.outputs.published != 'true' }}
+        env:
+          # The first publish of a crate has no Trusted Publishing configuration yet: the owner
+          # sets FIRST_PUBLISH_RUBRICA_SITE and the CRATES_IO_PUBLISH_NEW secret for one day.
+          CARGO_REGISTRY_TOKEN: ${{ vars.FIRST_PUBLISH_RUBRICA_SITE == 'true' && secrets.CRATES_IO_PUBLISH_NEW || steps.auth.outputs.token }}
+        # --no-verify: package-check built the unpacked crate. --allow-dirty: the bundle crate's files are
+        # git-ignored; the checkout is otherwise clean, and the check below compares the bytes.
+        run: cargo publish --locked --no-verify -p rubrica-site --allow-dirty
+      - name: crates.io holds exactly the bytes that were packed
+        if: ${{ steps.seen.outputs.published != 'true' }}
+        env:
+          V: ${{ steps.seen.outputs.version }}
+        run: |
+          set -euo pipefail
+          want=$(sha256sum "target/package/rubrica-site-$V.crate" | cut -d' ' -f1)
+          # The download appears a little after the publish returns.
+          for i in $(seq 12); do
+            curl -sfL -o crates-io.crate "https://static.crates.io/crates/rubrica-site/rubrica-site-$V.crate" && break
+            [ "$i" -lt 12 ] || { echo "::error::rubrica-site $V is not downloadable from crates.io"; exit 1; }
+            sleep 10
+          done
+          got=$(sha256sum crates-io.crate | cut -d' ' -f1)
+          [ "$got" = "$want" ] || { echo "::error::crates.io holds $got for rubrica-site $V, packed $want"; exit 1; }
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        if: ${{ steps.seen.outputs.published != 'true' }}
+        with:
+          subject-path: target/package/rubrica-site-${{ steps.seen.outputs.version }}.crate
+
+  publish-bin:
+    name: Publish rubrica to crates.io
+    needs: publish-site
+    if: ${{ !contains(github.ref_name, '-rc.') }}
+    runs-on: ubuntu-latest
+    environment: crates-io # requires the maintainer's approval
+    permissions:
+      contents: read
+      id-token: write # crates.io Trusted Publishing, and the attestation
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
+      - name: Is rubrica already on crates.io at this version?
+        id: seen
+        run: |
+          set -euo pipefail
+          V=$(cargo pkgid --locked -p rubrica | sed 's/.*[#@]//')
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          code=$(curl -s -o /dev/null -w '%{http_code}' -A 'rubrica-release (https://github.com/justin-stanley/rubrica)' "https://crates.io/api/v1/crates/rubrica/$V")
+          case "$code" in
+            200) echo "rubrica $V is already published"; echo "published=true" >> "$GITHUB_OUTPUT" ;;
+            404) echo "published=false" >> "$GITHUB_OUTPUT" ;;
+            *) echo "::error::crates.io answered $code for rubrica $V"; exit 1 ;;
+          esac
+      - name: Pack rubrica (file list, size, and the unpacked crate builds alone)
+        if: ${{ steps.seen.outputs.published != 'true' }}
+        run: scripts/package-check.sh rubrica
+      - uses: rust-lang/crates-io-auth-action@3268eb413133e2960fa4ae0e963ca76380c54cd9 # v1.0.6
+        id: auth
+        if: ${{ steps.seen.outputs.published != 'true' && vars.FIRST_PUBLISH_RUBRICA != 'true' }}
+      - name: Publish rubrica
+        if: ${{ steps.seen.outputs.published != 'true' }}
+        env:
+          # The first publish of a crate has no Trusted Publishing configuration yet: the owner
+          # sets FIRST_PUBLISH_RUBRICA and the CRATES_IO_PUBLISH_NEW secret for one day.
+          CARGO_REGISTRY_TOKEN: ${{ vars.FIRST_PUBLISH_RUBRICA == 'true' && secrets.CRATES_IO_PUBLISH_NEW || steps.auth.outputs.token }}
+        # --no-verify: package-check built the unpacked crate. --allow-dirty: the bundle crate's files are
+        # git-ignored; the checkout is otherwise clean, and the check below compares the bytes.
+        run: cargo publish --locked --no-verify -p rubrica --allow-dirty
+      - name: crates.io holds exactly the bytes that were packed
+        if: ${{ steps.seen.outputs.published != 'true' }}
+        env:
+          V: ${{ steps.seen.outputs.version }}
+        run: |
+          set -euo pipefail
+          want=$(sha256sum "target/package/rubrica-$V.crate" | cut -d' ' -f1)
+          # The download appears a little after the publish returns.
+          for i in $(seq 12); do
+            curl -sfL -o crates-io.crate "https://static.crates.io/crates/rubrica/rubrica-$V.crate" && break
+            [ "$i" -lt 12 ] || { echo "::error::rubrica $V is not downloadable from crates.io"; exit 1; }
+            sleep 10
+          done
+          got=$(sha256sum crates-io.crate | cut -d' ' -f1)
+          [ "$got" = "$want" ] || { echo "::error::crates.io holds $got for rubrica $V, packed $want"; exit 1; }
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        if: ${{ steps.seen.outputs.published != 'true' }}
+        with:
+          subject-path: target/package/rubrica-${{ steps.seen.outputs.version }}.crate
+
+  release:
+    name: GitHub release
+    needs: [build, image, publish-bin]
+    # After the crates are published; a candidate publishes none, so its skipped chain is fine.
+    if: ${{ !cancelled() && needs.build.result == 'success' && needs.image.result == 'success' && (needs.publish-bin.result == 'success' || (contains(github.ref_name, '-rc.') && needs.publish-bin.result == 'skipped')) }}
+    runs-on: ubuntu-latest
+    environment: release # requires the maintainer's approval
+    permissions:
+      contents: write # create the release
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: dist-*
+          merge-multiple: true
+          path: dist
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: notes
+          path: notes
+      - name: Create the release
+        run: |
+          set -euo pipefail
+          version="${TAG#v}"
+          shorts=(x86_64-linux-musl aarch64-linux-musl aarch64-apple-darwin)
+          assets=()
+          for short in "${shorts[@]}"; do
+            name="rubrica-$version-$short"
+            (cd dist && sha256sum -c "$name.tar.gz.sha256")
+            assets+=("dist/$name.tar.gz" "dist/$name.tar.gz.sha256")
+          done
+          {
+            cat notes/notes.md
+            echo
+            echo '## Platforms'
+            echo
+            echo '- Linux x86_64 and Linux aarch64: static binaries (musl), no libc needed.'
+            echo '- macOS on Apple Silicon (aarch64-apple-darwin): best effort. The binary is unsigned and'
+            echo '  not notarised, so macOS asks once before it runs.'
+            echo
+            echo '## Verify'
+            echo
+            echo 'Check the download against its attestation before you run it:'
+            echo
+            echo '```sh'
+            for short in "${shorts[@]}"; do
+              echo "gh attestation verify rubrica-$version-$short.tar.gz --repo $GITHUB_REPOSITORY"
+            done
+            echo '```'
+            echo
+            echo 'The container image (linux/amd64 and linux/arm64) has its own attestation:'
+            echo
+            echo '```sh'
+            echo "gh attestation verify oci://ghcr.io/$GITHUB_REPOSITORY:$version --repo $GITHUB_REPOSITORY"
+            echo '```'
+          } > body.md
+          flags=()
+          case "$version" in *-rc.*) flags+=(--prerelease) ;; esac
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --title "$TAG" \
+            --notes-file body.md --verify-tag "${flags[@]}" "${assets[@]}"

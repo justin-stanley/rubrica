@@ -1,0 +1,28 @@
+pulldown-cmark 0.13.6
+https://github.com/raphlinus/pulldown-cmark  (as the crate's Cargo.toml names it)
+crates.io package pulldown-cmark-0.13.6, unpacked by cargo on this machine
+vendored: src/lib.rs src/parse.rs src/firstpass.rs src/scanners.rs src/strings.rs src/linklabel.rs src/entities.rs src/tree.rs src/puncttable.rs
+left out: src/html.rs src/main.rs src/utils.rs (and the getopts, html, simd, serde, gen-tests features)
+  src/utils.rs is left out on purpose: its header records a GPL-authored origin re-licensed by
+  its author for pulldown-cmark; Rubrica writes its own text merge instead.
+local edits (the only non-comment differences from upstream; tools/upstream-diff.sh shows them):
+  src/firstpass.rs: the `simd` module (2580-2849) and its arms (2352-2358, 2406-2410, 2434-2437) deleted; the `cfg(not(…simd))` attributes (2359, 2412, 2438) deleted, their scalar code kept
+  src/lib.rs: rustbuild/simd attributes, serde and html gates, `mod utils` removed; crate doc rewritten; `GFM`, `parse`, `parse_with_offsets` added; a crate-level clippy allow-list
+    `pub mod autolink; pub mod textmerge;` and `events` added
+  src/strings.rs: the serde impl (94) removed
+  src/parse.rs: the five html-feature tests (2756-2810) removed
+  every file: a "Vendored by Rubrica" line after its licence header; src/firstpass.rs and src/strings.rs (no upstream header) and src/tree.rs (a header that refers to the LICENSE file) carry the MIT text from LICENSE as comment lines
+  src/firstpass.rs: a table interrupts a paragraph whatever its header row looks like (`scan_table_interrupt`, `header_cols`, a lazy-line arm in `parse_paragraph`, and a first line with no pipe can be a one-cell header); upstream 0.13.6 opens one there only when the header row starts with a `|`. A local divergence, because cmark-gfm and markdown-it build the table for `x\na | b\n-|-` and a wiki page commonly has that shape.
+  src/firstpass.rs: the table interrupt does not cut a paragraph where the header line, read at the start of a block, would open something other than a paragraph (`header_starts_another_block`: a list item, an HTML block of type 7 or a link reference definition), since no table opens there, nor where a header line with no leading pipe ends in a hard break (an odd run of backslashes); `parse_refdef_total` takes `&self` for it, and `probing_header_refdef` stops it recursing. Fuzz inputs `.\n3.\n-|` and `f\n[\n-|\n]:a` and `|\n\\\n-|` now parse as upstream does.
+  src/firstpass.rs: a list item and its list start at the byte where the item's indent starts (`parse_block`), not at the marker's offset less the indent's columns. A local fix: when the indent is the rest of a TAB a block quote marker consumed, upstream 0.13.6 starts them before the quote (`" - >\t-"`: the inner list at 2..6, its quote at 3..6); here they start at 5.
+  cargo fmt reformatted nothing but blank lines (two in src/firstpass.rs where deletions left them adjacent or trailing)
+upstream sha256 (as unpacked):
+f916b7bf0c3035776d6d5f8f62c4619855b291ba245b0ee1f46f980c59ce3919  src/lib.rs
+a97c96cb69e416c87c9652cf85b8714b734fd10347b36370719f7cdd73c23983  src/parse.rs
+a342dd2e30b8683f2096ebcc1a8a0a487a0b8db2d02a3e4f9a2ee97cdfe232b6  src/firstpass.rs
+2cdcb3cc76bc3d6947eec066eefe4582b660dd52da71d048f6dc515665291840  src/scanners.rs
+3204335caa3eb6be8b86ec5a21f7ff25b2ab34a364facb86b451e178b4992684  src/strings.rs
+6793cd0a2b1df6423d7cc8587b74a8e86261d5f7be9a8869cb69eda140b03501  src/linklabel.rs
+1602f3c4d22c0b0e3a4a08467a50bf9d0c27aadf2e5661b15a2cda20da0895a9  src/entities.rs
+d40c3406404ab9a179aba35d37f248a88b43e9c93060d462a4f83bef8d714418  src/tree.rs
+b591c2b353ba60b88661597f853b4986df87bee6b53045ab94ae562848457be4  src/puncttable.rs

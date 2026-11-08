@@ -1,0 +1,31 @@
+rubrica check: 8 finding(s) in 2 page(s), 6 link(s): 4 error(s), 4 warning(s)
+
+  alpha.md:9: warning broken-anchor
+    ](#nowhere)
+    no heading on /alpha has id "nowhere"
+    (2 heading(s) on that page; none is a close match)
+  bad.md:1: error bad-front-matter
+    no front matter: the first line is not ---
+  home.md:6: error duplicate-sec-id
+    @sec id "dup/x" is already used at alpha.md:6
+  home.md:9: error broken-page-link
+    ](/about)
+    there is no page /about in this repo
+  home.md:10: warning broken-anchor
+    ](/alpha#capacity--memory)
+    no heading on /alpha has id "capacity--memory"
+    fix: ](/alpha#capacity-memory)
+    (heading is "Capacity & memory" (line 7))
+  home.md:11: error relative-link
+    ](alpha)
+    a relative link to alpha.md: Wiki.js resolves it against the page as a directory, a browser against the page's directory
+    fix: ](/alpha)
+    (make internal links absolute, with a leading "/")
+  home.md:12: warning broken-page-link
+    ](/draft)
+    /draft is not published (published: false)
+  home.md:13: warning broken-asset-link
+    ](/pic.png)
+    the file it names is not in this repo
+
+rubrica check FAILED: 4 error(s), 4 warning(s).

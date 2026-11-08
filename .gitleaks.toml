@@ -1,0 +1,9 @@
+# gitleaks: its default rules, and the build output left out of `gitleaks dir`
+# (target/ holds copies of the wiki fixture and anything a test writes).
+# Accepted findings are .gitleaksignore's, by fingerprint.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "build output, not source"
+paths = ['''^target/''']

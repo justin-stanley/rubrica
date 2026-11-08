@@ -1,0 +1,95 @@
+name: Fuzz
+# Differential and panic fuzzing of the parser (fuzz/, a crate outside the
+# workspace). It runs on `pull_request` only (never the privileged variant that
+# hands a fork's code a write token), with a read-only token and no secrets, because a fork pull request's code runs here.
+# The budget is ten minutes on a pull request and an hour daily, shared equally among the
+# targets, so the whole run fits within timeout-minutes however many targets there are.
+
+on:
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "17 3 * * *" # daily, 03:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fuzz-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  NIGHTLY: nightly-2026-10-30
+  # rust-toolchain.toml pins the stable toolchain and rustup honours that file
+  # over whatever is installed; this makes cargo-fuzz and the fuzz crate use the
+  # nightly. Bump NIGHTLY and this together, deliberately.
+  RUSTUP_TOOLCHAIN: nightly-2026-10-30
+  CARGO_FUZZ_VERSION: 0.13.2
+  CARGO_AUDIT_VERSION: 0.22.2
+
+jobs:
+  fuzz:
+    name: Fuzz
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    env:
+      # Seconds for all targets together.
+      FUZZ_BUDGET: ${{ github.event_name == 'schedule' && '3600' || '600' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Is there a fuzz crate yet
+        id: present
+        run: |
+          # fuzz/ arrives later; this guard is then removed.
+          if [ -d fuzz ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::fuzz/ does not exist yet; nothing to fuzz"
+          fi
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
+        if: steps.present.outputs.present == 'true'
+        with:
+          toolchain: ${{ env.NIGHTLY }}
+      # No Swatinem/rust-cache here: nightly with sanitizers would share a key
+      # with the stable jobs and poison their cache.
+      - name: Install cargo-fuzz
+        if: steps.present.outputs.present == 'true'
+        run: cargo install cargo-fuzz@0.13.2 --locked
+      # fuzz/ is its own workspace with its own lock file, which the main audit never reads.
+      - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2
+        if: steps.present.outputs.present == 'true'
+        with:
+          tool: cargo-audit@${{ env.CARGO_AUDIT_VERSION }}
+      - name: Audit the fuzz crate's lock file
+        if: steps.present.outputs.present == 'true'
+        run: cargo audit -D warnings --file fuzz/Cargo.lock
+      - name: Run every target
+        if: steps.present.outputs.present == 'true'
+        run: |
+          set -euo pipefail
+          cd fuzz
+          targets="$(cargo fuzz list)"
+          [ -n "$targets" ] || { echo "::error::cargo fuzz list printed no targets"; exit 1; }
+          n="$(printf '%s\n' "$targets" | wc -l | tr -d ' ')"
+          per_target=$((FUZZ_BUDGET / n))
+          [ "$per_target" -ge 60 ] || { echo "::error::$n targets share ${FUZZ_BUDGET}s: ${per_target}s each is too little; raise the budget"; exit 1; }
+          for t in $targets; do
+            echo "::group::fuzz $t for ${per_target}s of the ${FUZZ_BUDGET}s budget ($n targets)"
+            cargo fuzz run "$t" -- "-max_total_time=${per_target}"
+            echo "::endgroup::"
+          done
+      - name: Upload the corpus
+        if: always() && steps.present.outputs.present == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: fuzz-corpus-${{ github.run_id }}
+          path: |
+            fuzz/corpus
+            fuzz/artifacts
+          if-no-files-found: ignore
+          retention-days: 14

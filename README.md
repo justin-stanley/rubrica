@@ -41,8 +41,8 @@ wall: a wiki is built the same way, a page at a time.
 - **Stays linear.** Every input shape that could make rendering superlinear has a bound, and a
   test checks that time grows in step with the input.
 - **Ships no script of its own.** Pages carry a `script-src 'none'` Content-Security-Policy and
-  code is highlighted at build time; from 0.1.2 the search page runs only Rubrica's own
-  WebAssembly, checked by hash.
+  code is highlighted at build time; the search page runs only Rubrica's own WebAssembly,
+  checked by hash.
 - **Releases you can verify.** Release tags are signed, and every binary, image and crate is
   attested.
 
@@ -75,14 +75,13 @@ See [design/ROADMAP.md](design/ROADMAP.md).
 
 ## Install
 
-Nothing is published yet. What each release adds (details in [docs/install.md](docs/install.md)):
+Nothing is published yet. From 0.1.0 (details in [docs/install.md](docs/install.md)):
 
 - **GitHub release**, every tarball attested; verify a download with
-  `gh attestation verify <tarball> --repo justin-stanley/rubrica`:
-  - 0.1.0: a static Linux x86_64 binary.
-  - 0.1.1: a static Linux aarch64 binary, and a macOS Apple Silicon binary on a best-effort basis.
-- **Container image**, `ghcr.io/justin-stanley/rubrica`: x86_64 from 0.1.0; multi-arch from 0.1.1.
-- **`cargo install rubrica`** (from 0.1.1, not in 0.1.0).
+  `gh attestation verify <tarball> --repo justin-stanley/rubrica`. Static Linux x86_64 and
+  aarch64 binaries, and a macOS Apple Silicon binary on a best-effort basis.
+- **Container image**, `ghcr.io/justin-stanley/rubrica`, for x86_64 and aarch64.
+- **`cargo install rubrica`**.
 
 ## `rubrica check`
 
@@ -145,8 +144,8 @@ where it knowingly differs from other implementations, is specified in [docs/spe
 
 Report vulnerabilities as [SECURITY.md](SECURITY.md) describes. Every shape of input that could
 make the build superlinear has a bound and a finding, and the `linear` tests check that time
-stays linear. No page carries JavaScript (0.1.0), and from 0.1.2 the only script is the loader
-for Rubrica's own WebAssembly, checked by hash. Rendered HTML passes through a sanitizer. See
+stays linear. No page carries JavaScript; the only script is the loader for Rubrica's own
+WebAssembly, on the search page, checked by hash. Rendered HTML passes through a sanitizer. See
 also [PRIVACY.md](PRIVACY.md).
 
 ## Minimum supported Rust version

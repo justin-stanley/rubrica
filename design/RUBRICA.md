@@ -7,7 +7,7 @@ Markdown pages; Rubrica checks it, builds it into a static site, and, from 0.2, 
 
 - It is complete wiki software, not a renderer for another wiki's syntax. Editing, permissions,
   search and collaboration are on the roadmap (`ROADMAP.md`).
-- It ships no JavaScript of its own. The one exception, from 0.1.2, is the loader that
+- It ships no JavaScript of its own. The one exception is the loader that
   `wasm-bindgen` generates for Rubrica's own WebAssembly search.
 - Diagrams are rendered in Rust, to SVG, at build time.
 - It owns its Markdown parser. The parser is Rubrica's code, vendored from a permissively

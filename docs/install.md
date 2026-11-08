@@ -28,8 +28,7 @@ The command succeeds only if the file was built by that repository's workflow fr
 commit. If it fails, do not run the file. A release's tag is an annotated tag signed with an SSH
 key; check it in a clone with `git -c gpg.ssh.allowedSignersFile=.github/allowed_signers verify-tag vX.Y.Z`.
 
-- 0.1.0: Linux x86_64.
-- 0.1.1: Linux aarch64, and macOS on Apple Silicon on a best-effort basis.
+From 0.1.0: Linux x86_64 and aarch64, and macOS on Apple Silicon on a best-effort basis.
 
 There is no Windows build and no build for Intel Macs.
 
@@ -80,7 +79,7 @@ end
 cargo install rubrica --locked
 ```
 
-Available from 0.1.1. The repository pins its toolchain in `rust-toolchain.toml`.
+Available from 0.1.0. The repository pins its toolchain in `rust-toolchain.toml`.
 
 The release workflow publishes the workspace's crates (`rubrica-markdown`, `rubrica-render`,
 `rubrica-wasm-bundle`, `rubrica-site` and `rubrica`) in that order, each after the owner
@@ -96,7 +95,7 @@ the attestation of the release that published it.
 docker pull ghcr.io/justin-stanley/rubrica
 ```
 
-Available from 0.1.0 (x86_64), and as a multi-architecture image from 0.1.1. The image holds
+Available from 0.1.0, for x86_64 and aarch64. The image holds
 only the release binary, runs as a non-root user and writes nothing to its root filesystem, so
 run it with `--read-only`:
 

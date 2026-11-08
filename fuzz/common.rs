@@ -24,24 +24,58 @@ pub fn table_without_leading_pipe(s: &str) -> bool {
     })
 }
 
+/// The column after `s[from..to]`, a tab advancing to the next multiple of 4.
+fn columns(s: &str, from: usize, to: usize) -> usize {
+    s[from..to].chars().fold(0, |col, c| {
+        if c == '\t' {
+            (col / 4 + 1) * 4
+        } else {
+            col + 1
+        }
+    })
+}
+
 /// True when our GFM parse of `s` opens a table whose header row is a lazy continuation
 /// line: the source of the header's line, up to the table's start, holds fewer `>`
-/// markers than the block quotes enclosing the table.
+/// markers than the block quotes enclosing the table, or is indented less than the content
+/// of a list item enclosing it whose first line is an earlier one.
 ///
-/// Rubrica opens such a table inside the quote, as cmark-gfm does (the header row
-/// continues the quote's paragraph lazily and the delimiter row is inside the quote);
-/// upstream never lets a table interrupt a paragraph through a lazy line. The same
-/// documented deviation as `table_without_leading_pipe`, reached through a lazy line.
+/// Rubrica opens such a table inside the quote or item, as cmark-gfm does (the header row
+/// continues the container's paragraph lazily and the delimiter row is inside the
+/// container); upstream never lets a table interrupt a paragraph through a lazy line. The
+/// same documented deviation as `table_without_leading_pipe`, reached through a lazy line.
 pub fn table_with_lazy_header(s: &str) -> bool {
-    let mut quotes = 0usize;
+    // The open containers: `None` for a block quote, `Some((line start, content column))`
+    // for a list item, the column where its content starts on its first line.
+    let mut open: Vec<Option<(usize, usize)>> = Vec::new();
+    let line_start_of = |at: usize| s[..at].rfind(['\n', '\r']).map_or(0, |i| i + 1);
+    let skip_blanks =
+        |at: usize| at + (s[at..].len() - s[at..].trim_start_matches([' ', '\t']).len());
     for (e, range) in parse_with_offsets(s, GFM) {
         match e {
-            Event::Start(Tag::BlockQuote(_)) => quotes += 1,
-            Event::End(TagEnd::BlockQuote(_)) => quotes -= 1,
-            Event::Start(Tag::Table(_)) if quotes > 0 => {
-                let line_start = s[..range.start].rfind(['\n', '\r']).map_or(0, |i| i + 1);
-                let markers = s[line_start..range.start].matches('>').count();
-                if markers < quotes {
+            Event::Start(Tag::BlockQuote(_)) => open.push(None),
+            Event::Start(Tag::Item) => {
+                let line = line_start_of(range.start);
+                let marker = skip_blanks(range.start);
+                let digits = s[marker..].bytes().take_while(u8::is_ascii_digit).count();
+                let content = skip_blanks(marker + digits + 1);
+                open.push(Some((line, columns(s, line, content))));
+            }
+            Event::End(TagEnd::BlockQuote(_) | TagEnd::Item) => {
+                open.pop();
+            }
+            Event::Start(Tag::Table(_)) if !open.is_empty() => {
+                let line_start = line_start_of(range.start);
+                let quotes = open.iter().filter(|c| c.is_none()).count();
+                if s[line_start..range.start].matches('>').count() < quotes {
+                    return true;
+                }
+                let indent = columns(s, line_start, range.start);
+                if open
+                    .iter()
+                    .flatten()
+                    .any(|&(line, content)| line < line_start && indent < content)
+                {
                     return true;
                 }
             }

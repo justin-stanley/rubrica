@@ -93,7 +93,7 @@ done
 
 # 5. The job-level names of ci.yml.
 names=$(ruby -ryaml -e 'd = YAML.load_file(ARGV[0]); p d["jobs"].values.map { |j| j["name"] }.sort' "$wf/ci.yml")
-want_names='["MSRV", "Rust", "Secret scan", "cargo audit", "cargo deny", "linear", "linear-arm64", "no-js", "package", "spec", "wasm"]'
+want_names='["MSRV", "Rust", "Secret scan", "cargo audit", "cargo deny", "coverage", "linear", "linear-arm64", "no-js", "package", "spec", "wasm"]'
 [ "$names" = "$want_names" ] || bad "ci.yml job names are $names, want $want_names"
 
 # 6. YAML parses.
@@ -549,6 +549,65 @@ for k in upgrade-in-check upgrade-after-build upgrade-version upgrade-token upgr
   printf '%s\n' "$upgrade_report" | grep -qxF "$k" || bad "release.yml: $k does not hold (the check job builds the candidate, then runs tools/upgrade-check.sh with GH_TOKEN, and never sets the test-mode variables)"
 done
 [ -x tools/upgrade-check.sh ] || bad "tools/upgrade-check.sh is missing or not executable"
+# 12i. The coverage job. Coverage is measured in house: `cargo llvm-cov` over the workspace,
+# the summary table written to the job summary, the HTML report kept as an artifact. No
+# third-party service sees it: no uploader action, no token, no badge. The tool is installed
+# at an exact version with --locked, every action is SHA-pinned (check 2), and the job needs
+# the wasm bundle like every job that builds rubrica-site. coverage_findings FILE prints one
+# key per property that holds; the planted variants below must each lose the key they break,
+# so the check cannot pass on a job that does not have the shape.
+# The Ruby text is matched literally, so single quotes are intended.
+# shellcheck disable=SC2016
+coverage_findings() {
+  ruby -ryaml -e '
+    j = (YAML.load_file(ARGV[0])["jobs"] || {})["coverage"]
+    exit 0 unless j
+    steps = j["steps"] || []
+    runs = steps.map { |s| s["run"].to_s }
+    text = runs.join("\n")
+    uses = steps.map { |s| s["uses"].to_s.sub(/@.*/, "") }.reject(&:empty?)
+    puts "named" if j["name"] == "coverage"
+    puts "needs-wasm" if Array(j["needs"]).include?("wasm")
+    dl = steps.find { |s| s["uses"].to_s.start_with?("actions/download-artifact@") }
+    puts "downloads-bundle" if dl && dl["with"]["name"] == "wasm-bundle" && dl["with"]["path"] == "crates/rubrica-wasm-bundle/src"
+    install = runs.index { |r| r =~ /cargo install cargo-llvm-cov@[0-9]+\.[0-9]+\.[0-9]+ .*--locked/ }
+    run = runs.index { |r| r =~ /cargo llvm-cov(?! report)\b.*--workspace/ && r.include?("--locked") }
+    puts "pinned-install" if install
+    puts "workspace-run" if run
+    puts "install-before-run" if install && run && install < run
+    puts "component" if text.include?("rustup component add llvm-tools-preview")
+    puts "summary" if runs.any? { |r| r.include?("cargo llvm-cov report") && r.include?("GITHUB_STEP_SUMMARY") }
+    up = steps.find { |s| s["uses"].to_s.start_with?("actions/upload-artifact@") && s["with"]["name"] == "coverage-html" }
+    puts "html-artifact" if up && up["with"]["path"].to_s.include?("target/llvm-cov/html") && up["with"]["if-no-files-found"] == "error"
+    allowed = %w[actions/checkout actions/download-artifact actions/upload-artifact dtolnay/rust-toolchain Swatinem/rust-cache]
+    puts "only-first-party-actions" if (uses - allowed).empty?
+    puts "no-uploader" unless j.to_s =~ /codecov|coveralls|codacy|sonar|CODECOV|COVERALLS|secrets\.|token/i
+  ' "$1"
+}
+coverage_keys="named needs-wasm downloads-bundle pinned-install workspace-run install-before-run component summary html-artifact only-first-party-actions no-uploader"
+cov_report=$(coverage_findings "$wf/ci.yml" 2>&1) || bad "the coverage check failed: $cov_report"
+for k in $coverage_keys; do
+  printf '%s\n' "$cov_report" | grep -qxF "$k" || bad "ci.yml coverage: $k does not hold"
+done
+# Planted variants of the real file: each must lose exactly the key it breaks.
+cov_variant() { # NAME KEY SED_EXPR: the variant of ci.yml built with the expression loses KEY
+  local name=$1 key=$2 expr=$3 got
+  sed "$expr" "$wf/ci.yml" > "$notes_tmp/cov.yml"
+  if cmp -s "$wf/ci.yml" "$notes_tmp/cov.yml"; then bad "coverage variant ($name): the edit changed nothing"; return; fi
+  got=$(coverage_findings "$notes_tmp/cov.yml" 2>&1) || { bad "coverage variant ($name): $got"; return; }
+  if printf '%s\n' "$got" | grep -qxF "$key"; then bad "coverage variant ($name): still reports $key"; fi
+}
+if printf '%s\n' "$cov_report" | grep -qxF named; then
+  cov_variant "an unpinned tool" pinned-install 's/cargo install cargo-llvm-cov@[0-9.]* /cargo install cargo-llvm-cov /'
+  cov_variant "an unlocked tool" pinned-install 's/cargo install cargo-llvm-cov@\([0-9.]*\) --locked/cargo install cargo-llvm-cov@\1/'
+  cov_variant "an uploader" only-first-party-actions 's#actions/upload-artifact@\([0-9a-f]*\) \# v7.0.2#codecov/codecov-action@\1 \# v5#'
+  cov_variant "a token" no-uploader 's/^  CARGO_TERM_COLOR: always/  CARGO_TERM_COLOR: always\n  CODECOV_TOKEN: x/'
+  cov_variant "no job summary" summary 's/GITHUB_STEP_SUMMARY/SOME_FILE/'
+  cov_variant "no workspace" workspace-run 's/cargo llvm-cov --workspace/cargo llvm-cov/'
+fi
+grep_status -rniE 'codecov|coveralls|codacy|sonarcloud' "$wf"
+[ "$rc" -eq 1 ] || bad "a workflow names a coverage service: $out"
+
 # 13. The Dockerfile's base image is pinned by digest, and it runs as a non-root user.
 [ -f Dockerfile ] || { bad "Dockerfile is missing"; exit 1; }
 first=$(head -1 Dockerfile)

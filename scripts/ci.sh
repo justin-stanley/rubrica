@@ -64,7 +64,7 @@ left=$(find "$test_tmp" -mindepth 1 -maxdepth 1 | sort) || left="(find failed)"
 rmdir "$test_tmp"
 echo "ci: the tests left nothing in TMPDIR"
 cargo clippy --all-targets --all-features --locked -- -D warnings
-RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --all-features --locked
+RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --all-features --workspace --locked
 # CI runs these two as their own jobs (RUBRICA_CI_SPLIT=1); locally the gate runs everything.
 if [ "${RUBRICA_CI_SPLIT:-}" != 1 ]; then
   cargo deny check bans licenses sources

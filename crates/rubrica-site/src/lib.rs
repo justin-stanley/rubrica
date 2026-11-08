@@ -1,9 +1,54 @@
-//! The corpus model of Rubrica: the page set and URLs, nav, TOC, link graph,
-//! search index and templates, built from in-memory source files so the static
-//! build and the live server render identically.
+//! The corpus and the static build of a [Rubrica](https://github.com/justin-stanley/rubrica)
+//! wiki: the page set and URLs, navigation, tables of contents, the link graph, the search
+//! index and the templates, built from in-memory source files so that the static build and
+//! a live server render identically.
 //!
-//! [`Site::from_sources`] is pure: the caller reads the files (from a git
-//! tree or a directory) and this crate never touches a file system.
+//! [`Site::from_sources`] is pure: the caller reads the files (from a git tree or a
+//! directory) and this crate never touches a file system. [`build::build`] hands each output
+//! file to a callback, so the caller decides where it goes. Use this crate to build a Rubrica
+//! site from your own code; to build one from a git repository, use the
+//! [`rubrica`](https://docs.rs/rubrica) command-line tool, which is this crate plus a git
+//! reader.
+//!
+//! # Example
+//!
+//! ```rust
+//! use rubrica_site::{Site, SiteConfig, SourceFile};
+//!
+//! let files = vec![
+//!     SourceFile::regular("home.md", "---\ntitle: Home\n---\n# Home\n\nSee [notes](/notes).\n"),
+//!     SourceFile::regular("notes.md", "---\ntitle: Notes\n---\n# Notes\n"),
+//! ];
+//! let site = Site::from_sources(files, &SiteConfig::default());
+//!
+//! assert_eq!(site.pages().len(), 2);
+//! assert!(site.findings().is_empty()); // no dead links, no front matter problems
+//! ```
+//!
+//! `examples/build.rs` goes on to write the site: `cargo run -p rubrica-site --example build`.
+//!
+//! # Features
+//!
+//! - `search-wasm` (on by default) embeds the search page's WebAssembly from
+//!   [`rubrica-wasm-bundle`](https://docs.rs/rubrica-wasm-bundle). Build with
+//!   `--no-default-features` to leave it out; the bundle's files must exist to build with it.
+//!
+//! # The other crates
+//!
+//! - [`rubrica-markdown`](https://docs.rs/rubrica-markdown) parses the Markdown.
+//! - [`rubrica-render`](https://docs.rs/rubrica-render) renders each page to sanitized HTML.
+//! - [`rubrica-wasm-bundle`](https://docs.rs/rubrica-wasm-bundle) is the prebuilt search script.
+//! - [`rubrica`](https://docs.rs/rubrica) is the command-line tool.
+//!
+//! # Minimum supported Rust version
+//!
+//! Rust 1.94. A raise is a minor-version change.
+//!
+//! # Licence
+//!
+//! AGPL-3.0-only.
+//!
+//! # Bounds
 //!
 //! Every repository path, of any file, longer than [`MAX_PATH_BYTES`] or
 //! of more than [`MAX_PATH_SEGMENTS`] segments is
@@ -40,6 +85,8 @@
 //! one target page at a time, each index dropped before the next is built.
 //! `tests/memory.rs` checks that one is alive at a time and the index's
 //! size per id byte.
+
+#![warn(missing_docs)]
 
 pub mod build;
 pub mod cache;
@@ -1127,6 +1174,11 @@ impl Site {
     /// the conflict already there. The editor and renames
     /// (against the site without the old file) name new files
     /// through this.
+    ///
+    /// # Errors
+    ///
+    /// A [`NewPageProblem`]: the path is no page ([`NotAPage`]), or the page would clash with
+    /// a file or directory already there.
     pub fn check_new_page(&self, path: &str) -> Result<PagePath, NewPageProblem> {
         let page = page_path_for_new_file(path, &self.cfg).map_err(NewPageProblem::NotAPage)?;
         let key = source::fold_key(path);

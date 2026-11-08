@@ -1,6 +1,6 @@
 [package]
 name = "rubrica-wasm-bundle"
-description = "The prebuilt wasm search bundle for rubrica sites: built and attested by CI from rubrica-wasm."
+description = "The prebuilt WebAssembly search for Rubrica sites: the .wasm and its loader as data, built and attested by CI from rubrica-wasm. Used by rubrica-site."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

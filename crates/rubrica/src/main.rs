@@ -1,5 +1,9 @@
-//! The `rubrica` binary: `check` and `build`; `parity` and
-//! later `serve` arrive later.
+//! The `rubrica` binary, the command-line face of Rubrica: `check` a Markdown git
+//! repository (links, anchors, front matter, section ids, paths) and `build` it into a
+//! static site. A server and editing come in later releases.
+//!
+//! This crate is a program; the libraries behind it are `rubrica-markdown`,
+//! `rubrica-render` and `rubrica-site`.
 
 mod build;
 mod escape_table;
@@ -16,7 +20,7 @@ use clap::{Args, Parser, Subcommand, ValueEnum};
 use rubrica_render::frontmatter::Severity;
 use rubrica_site::{CheckOptions, Finding, Site};
 
-/// A static wiki renderer: `check` and `build` a Markdown repository.
+/// A wiki in a git repository: `check` its Markdown pages and `build` them into a static site.
 #[derive(Parser)]
 #[command(name = "rubrica", version)]
 struct Cli {

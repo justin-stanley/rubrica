@@ -30,6 +30,7 @@ pub struct TextMerge<'a, I> {
 }
 
 impl<'a, I: Iterator<Item = (Event<'a>, Range<usize>)>> TextMerge<'a, I> {
+    /// Merges the `(event, range)` pairs of `iter`, usually an [`OffsetIter`](crate::OffsetIter).
     pub fn new(iter: I) -> Self {
         TextMerge {
             iter,
@@ -46,8 +47,11 @@ impl<'a, I: Iterator<Item = (Event<'a>, Range<usize>)>> TextMerge<'a, I> {
 /// piece's start to the last piece's end, and the pieces themselves.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TextRun {
+    /// The pieces' text, concatenated.
     pub text: String,
+    /// The source range from the first piece's start to the last piece's end.
     pub range: Range<usize>,
+    /// The `Text` events the run was merged from, in order.
     pub pieces: Vec<Piece>,
 }
 
@@ -55,8 +59,11 @@ pub struct TextRun {
 /// run's text and came from `range` of the source. Verbatim iff `text_len == range.len()`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Piece {
+    /// Where the piece starts in the run's text, in bytes.
     pub text_start: usize,
+    /// The piece's length in the run's text, in bytes.
     pub text_len: usize,
+    /// The piece's byte range in the source.
     pub range: Range<usize>,
 }
 
@@ -155,7 +162,9 @@ impl TextRun {
 /// What the merge yields: a run of text, or any other event unchanged.
 #[derive(Debug)]
 pub enum Merged<'a> {
+    /// A run of merged text.
     Run(TextRun),
+    /// Any other event, with its source range, unchanged.
     Other(Event<'a>, Range<usize>),
 }
 

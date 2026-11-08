@@ -1,6 +1,6 @@
 [package]
 name = "rubrica"
-description = "A wiki renderer: check and build a Markdown repository into a static site."
+description = "A wiki in a git repository, written in Rust: check a Markdown repository for dead links and anchors, and build it into a static site with search and no script of its own."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -8,7 +8,7 @@ license.workspace = true
 repository.workspace = true
 homepage.workspace = true
 readme = "README.md"
-keywords = ["wiki", "markdown", "static-site", "cli"]
+keywords = ["wiki", "markdown", "static-site", "link-checker", "cli"]
 categories = ["command-line-utilities", "web-programming"]
 
 [[bin]]

@@ -20,29 +20,77 @@
 // Vendored by Rubrica from pulldown-cmark 0.13.6, src/lib.rs (MIT; see UPSTREAM and NOTICE).
 
 //! Rubrica's Markdown parser: a pull parser for [CommonMark](https://commonmark.org)
-//! 0.31.2 whose [`Parser`] is an iterator over [`Event`]s, each with its byte range in
-//! the source through [`parse_with_offsets`].
+//! 0.31.2 plus the GitHub Flavored Markdown extensions, written for the
+//! [Rubrica](https://github.com/justin-stanley/rubrica) wiki engine. Its [`Parser`] is an
+//! iterator over [`Event`]s, and [`parse_with_offsets`] pairs each event with its byte
+//! range in the source.
+//!
+//! Use this crate when you need the structure of a Markdown document (events and source
+//! positions) and not HTML. To turn Markdown into sanitized HTML, use
+//! [`rubrica-render`](https://docs.rs/rubrica-render), which builds on this crate.
+//!
+//! # Example
+//!
+//! ```rust
+//! use rubrica_markdown::{parse, Event, Tag, GFM};
+//!
+//! let events: Vec<Event> = parse("a ~~b~~ *c*", GFM).collect();
+//! assert!(events.contains(&Event::Start(Tag::Strikethrough)));
+//! assert!(events.contains(&Event::Start(Tag::Emphasis)));
+//! ```
+//!
+//! Source positions come from [`parse_with_offsets`]:
+//!
+//! ```rust
+//! use rubrica_markdown::{parse_with_offsets, Event, GFM};
+//!
+//! let src = "# Title\n\ntext";
+//! let (event, range) = parse_with_offsets(src, GFM)
+//!     .find(|(e, _)| matches!(e, Event::Text(t) if &**t == "text"))
+//!     .unwrap();
+//! assert_eq!(&src[range], "text");
+//! # let _ = event;
+//! ```
+//!
+//! # Which function to call
+//!
+//! - [`parse`] is the plain event stream.
+//! - [`parse_with_offsets`] adds each event's byte range in the source.
+//! - [`events`] is the stream Rubrica renders: [`parse_with_offsets`] with consecutive text
+//!   merged ([`textmerge`]) and GFM extended autolinks (`www.`, `http://`, `https://`,
+//!   `ftp://`, email) found in it ([`autolink`]).
+//!
+//! [`GFM`] is Rubrica's option set: tables, strikethrough, task lists and footnotes.
+//! Extended autolinks are Rubrica's own pass over the events, not an [`Options`] flag,
+//! and upstream's `ENABLE_GFM` (blockquote alerts) is not part of it. Parsing returns no
+//! errors: every `&str` has an event stream.
+//!
+//! # The other crates
+//!
+//! - [`rubrica-render`](https://docs.rs/rubrica-render) writes these events as sanitized HTML.
+//! - [`rubrica-site`](https://docs.rs/rubrica-site) builds a wiki's pages, links and search
+//!   index from rendered pages.
+//! - [`rubrica`](https://docs.rs/rubrica) is the command-line tool.
+//!
+//! # Provenance
 //!
 //! The block and inline parsers derive from pulldown-cmark 0.13.6 by Raph Levien and
 //! contributors, MIT (see `UPSTREAM` and `NOTICE` in this crate's repository); the
 //! vendored files keep their upstream headers. Upstream changes are ported by hand after
-//! reading the diff, never merged blind.
+//! reading the diff, never merged blind. The vendored internals keep their upstream
+//! comments; the public items are documented here.
 //!
-//! [`GFM`] is Rubrica's option set: tables, strikethrough, task lists and footnotes.
-//! Extended autolinks are Rubrica's own pass over the events, not an [`Options`] flag,
-//! and upstream's `ENABLE_GFM` (blockquote alerts) is not part of it. HTML writing lives
-//! in `rubrica-render`, not here: this crate produces events only.
+//! # Minimum supported Rust version
 //!
-//! # Example
-//! ```rust
-//! use rubrica_markdown::{parse, Event, GFM};
+//! Rust 1.94. A raise is a minor-version change.
 //!
-//! let events: Vec<Event> = parse("a ~~b~~ *c*", GFM).collect();
-//! assert!(events.iter().any(|e| matches!(e, Event::Start(rubrica_markdown::Tag::Strikethrough))));
-//! ```
+//! # Licence
+//!
+//! AGPL-3.0-only AND MIT: the vendored files are MIT, the rest AGPL-3.0-only.
 
 #![forbid(unsafe_code)]
 #![warn(missing_debug_implementations)]
+#![warn(missing_docs)]
 // vendored; lints silenced, not fixed
 #![allow(
     clippy::large_const_arrays,
@@ -108,20 +156,24 @@ pub fn events(src: &str, options: Options) -> autolink::Autolinks<'_, OffsetIter
 /// Codeblock kind.
 #[derive(Clone, Debug, PartialEq)]
 pub enum CodeBlockKind<'a> {
+    /// An indented code block.
     Indented,
     /// The value contained in the tag describes the language of the code, which may be empty.
     Fenced(CowStr<'a>),
 }
 
 impl<'a> CodeBlockKind<'a> {
+    /// Whether this is an indented code block.
     pub fn is_indented(&self) -> bool {
         matches!(*self, CodeBlockKind::Indented)
     }
 
+    /// Whether this is a fenced code block.
     pub fn is_fenced(&self) -> bool {
         matches!(*self, CodeBlockKind::Fenced(_))
     }
 
+    /// This kind with its language tag owned (`'static`), so it can outlive the source.
     pub fn into_static(self) -> CodeBlockKind<'static> {
         match self {
             CodeBlockKind::Indented => CodeBlockKind::Indented,
@@ -133,17 +185,24 @@ impl<'a> CodeBlockKind<'a> {
 /// BlockQuote kind (Note, Tip, Important, Warning, Caution).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum BlockQuoteKind {
+    /// A `[!NOTE]` alert.
     Note,
+    /// A `[!TIP]` alert.
     Tip,
+    /// An `[!IMPORTANT]` alert.
     Important,
+    /// A `[!WARNING]` alert.
     Warning,
+    /// A `[!CAUTION]` alert.
     Caution,
 }
 
 /// Metadata block kind.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum MetadataBlockKind {
+    /// A block delimited by `---` lines (YAML front matter).
     YamlStyle,
+    /// A block delimited by `+++` lines (TOML front matter).
     PlusesStyle,
 }
 
@@ -160,8 +219,11 @@ pub enum Tag<'a> {
     ///
     /// `id`, `classes` and `attrs` are only parsed and populated with [`Options::ENABLE_HEADING_ATTRIBUTES`], `None` or empty otherwise.
     Heading {
+        /// The heading's level, `H1` to `H6`.
         level: HeadingLevel,
+        /// The identifier from `{ #id }`, without the `#`.
         id: Option<CowStr<'a>>,
+        /// The classes from `{ .class }`, without the `.`.
         classes: Vec<CowStr<'a>>,
         /// The first item of the tuple is the attr and second one the value.
         attrs: Vec<(CowStr<'a>, Option<CowStr<'a>>)>,
@@ -261,8 +323,11 @@ pub enum Tag<'a> {
 
     /// A link.
     Link {
+        /// How the link was written: inline, reference, autolink and so on.
         link_type: LinkType,
+        /// The destination URL, as written (entities and escapes resolved).
         dest_url: CowStr<'a>,
+        /// The link title, empty when there is none.
         title: CowStr<'a>,
         /// Identifier of reference links, e.g. `world` in the link `[hello][world]`.
         id: CowStr<'a>,
@@ -271,8 +336,11 @@ pub enum Tag<'a> {
     /// An image. The first field is the link type, the second the destination URL and the third is a title,
     /// the fourth is the link identifier.
     Image {
+        /// How the image was written: inline, reference, autolink and so on.
         link_type: LinkType,
+        /// The image source URL, as written (entities and escapes resolved).
         dest_url: CowStr<'a>,
+        /// The image title, empty when there is none.
         title: CowStr<'a>,
         /// Identifier of reference links, e.g. `world` in the link `[hello][world]`.
         id: CowStr<'a>,
@@ -285,6 +353,7 @@ pub enum Tag<'a> {
 }
 
 impl<'a> Tag<'a> {
+    /// The [`TagEnd`] that closes this tag.
     pub fn to_end(&self) -> TagEnd {
         match self {
             Tag::Paragraph => TagEnd::Paragraph,
@@ -313,6 +382,7 @@ impl<'a> Tag<'a> {
         }
     }
 
+    /// This tag with every string it holds owned (`'static`), so it can outlive the source.
     pub fn into_static(self) -> Tag<'static> {
         match self {
             Tag::Paragraph => Tag::Paragraph,
@@ -378,37 +448,59 @@ impl<'a> Tag<'a> {
 /// The end of a `Tag`.
 #[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
 pub enum TagEnd {
+    /// The end of a paragraph.
     Paragraph,
+    /// The end of a heading of the given level.
     Heading(HeadingLevel),
 
+    /// The end of a block quote, with its alert kind if it had one.
     BlockQuote(Option<BlockQuoteKind>),
+    /// The end of a code block.
     CodeBlock,
 
+    /// The end of a raw HTML block.
     HtmlBlock,
 
     /// A list, `true` for ordered lists.
     List(bool),
+    /// The end of a list item.
     Item,
+    /// The end of a footnote definition.
     FootnoteDefinition,
 
+    /// The end of a definition list.
     DefinitionList,
+    /// The end of a definition list title.
     DefinitionListTitle,
+    /// The end of a definition list definition.
     DefinitionListDefinition,
 
+    /// The end of a table.
     Table,
+    /// The end of a table's header row.
     TableHead,
+    /// The end of a table row.
     TableRow,
+    /// The end of a table cell.
     TableCell,
 
+    /// The end of emphasis (`*a*`).
     Emphasis,
+    /// The end of strong emphasis (`**a**`).
     Strong,
+    /// The end of strikethrough (`~~a~~`).
     Strikethrough,
+    /// The end of superscript.
     Superscript,
+    /// The end of subscript.
     Subscript,
 
+    /// The end of a link.
     Link,
+    /// The end of an image.
     Image,
 
+    /// The end of a metadata block.
     MetadataBlock(MetadataBlockKind),
 }
 
@@ -423,13 +515,20 @@ impl<'a> From<Tag<'a>> for TagEnd {
     }
 }
 
+/// The level of a heading, from `H1` (the top level) to `H6`.
 #[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
 pub enum HeadingLevel {
+    /// Level 1, `<h1>`.
     H1 = 1,
+    /// Level 2, `<h2>`.
     H2,
+    /// Level 3, `<h3>`.
     H3,
+    /// Level 4, `<h4>`.
     H4,
+    /// Level 5, `<h5>`.
     H5,
+    /// Level 6, `<h6>`.
     H6,
 }
 
@@ -597,6 +696,7 @@ pub enum Event<'a> {
 }
 
 impl<'a> Event<'a> {
+    /// This event with every string it holds owned (`'static`), so it can outlive the source.
     pub fn into_static(self) -> Event<'static> {
         match self {
             Event::Start(t) => Event::Start(t.into_static()),
@@ -622,8 +722,11 @@ impl<'a> Event<'a> {
 pub enum Alignment {
     /// Default text alignment.
     None,
+    /// Left-aligned.
     Left,
+    /// Centered.
     Center,
+    /// Right-aligned.
     Right,
 }
 
@@ -632,6 +735,7 @@ bitflags::bitflags! {
     /// that are not part of the CommonMark spec.
     #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
     pub struct Options: u32 {
+        /// GFM tables (`| a | b |` rows under a delimiter row).
         const ENABLE_TABLES = 1 << 1;
         /// GitHub-compatible footnote syntax.
         ///
@@ -650,7 +754,9 @@ bitflags::bitflags! {
         ///
         /// [^1]: footnote defined
         const ENABLE_FOOTNOTES = 1 << 2;
+        /// Strikethrough with `~~`.
         const ENABLE_STRIKETHROUGH = 1 << 3;
+        /// Task list items (`- [ ]` and `- [x]`).
         const ENABLE_TASKLISTS = 1 << 4;
         /// Enables replacement of ASCII punctuation characters with
         /// Unicode ligatures and smart quotes.
@@ -713,7 +819,9 @@ bitflags::bitflags! {
         ///   : definition 2
         /// ```
         const ENABLE_DEFINITION_LIST = 1 << 12;
+        /// Superscript with `^`.
         const ENABLE_SUPERSCRIPT = 1 << 13;
+        /// Subscript with `~`.
         const ENABLE_SUBSCRIPT = 1 << 14;
         /// Obsidian-style Wikilinks.
         const ENABLE_WIKILINKS = 1 << 15;

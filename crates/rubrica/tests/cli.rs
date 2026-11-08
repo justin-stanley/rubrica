@@ -35,7 +35,7 @@ fn help_of(args: &[&str]) -> String {
 #[test]
 fn the_binary_help_names_no_site() {
     let help = help_of(&["--help"]);
-    assert!(help.contains("a static wiki renderer"));
+    assert!(help.contains("a wiki in a git repository"));
     assert!(!help.contains("wiki."));
     let help = help_of(&["build", "--help"]);
     assert!(!help.contains("wiki."));

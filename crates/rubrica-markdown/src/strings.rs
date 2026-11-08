@@ -214,6 +214,7 @@ impl<'a> Borrow<str> for CowStr<'a> {
 }
 
 impl<'a> CowStr<'a> {
+    /// The text as an owned `String`, copying it unless it is already boxed.
     pub fn into_string(self) -> String {
         match self {
             CowStr::Boxed(b) => b.into(),
@@ -222,6 +223,7 @@ impl<'a> CowStr<'a> {
         }
     }
 
+    /// The text with no borrow of the source (`'static`): inline when it fits, else boxed.
     pub fn into_static(self) -> CowStr<'static> {
         match self {
             CowStr::Boxed(b) => CowStr::Boxed(b),

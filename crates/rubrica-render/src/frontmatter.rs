@@ -285,6 +285,11 @@ fn err(line: usize, kind: FrontMatterErrorKind) -> FrontMatterError {
 /// (line 0); `README.md` is not a page. Anchors, aliases and explicit tags
 /// are refused, the YAML is capped at [`MAX_FRONT_MATTER_BYTES`] and its
 /// nesting at [`MAX_FRONT_MATTER_DEPTH`].
+///
+/// # Errors
+///
+/// A [`FrontMatterError`] with the line and the [`FrontMatterErrorKind`] when the block is
+/// missing or unterminated, holds bare carriage returns, or its YAML is refused.
 pub fn split_front_matter(src: &str) -> Result<(FrontMatter, &str, usize), FrontMatterError> {
     let mut lines = src.split_inclusive('\n');
     let first = lines.next().unwrap_or("");

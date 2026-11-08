@@ -1,6 +1,6 @@
 [package]
 name = "rubrica-site"
-description = "The corpus: page set, URLs, nav, TOC, link graph, search index and templates."
+description = "The corpus and static build of the Rubrica wiki engine: pages and URLs, navigation, link graph and checks, search index and templates, from in-memory Markdown files."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -8,7 +8,7 @@ license.workspace = true
 repository.workspace = true
 homepage.workspace = true
 readme = "README.md"
-keywords = ["wiki", "static-site", "search", "markdown"]
+keywords = ["wiki", "static-site", "markdown", "search", "link-checker"]
 categories = ["web-programming", "text-processing"]
 
 [dependencies]

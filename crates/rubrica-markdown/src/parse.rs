@@ -189,10 +189,14 @@ bitflags::bitflags! {
     }
 }
 
+/// A reference link whose label has no definition, passed to a [`BrokenLinkCallback`].
 #[derive(Debug)]
 pub struct BrokenLink<'a> {
+    /// The byte range of the whole link in the source.
     pub span: std::ops::Range<usize>,
+    /// How the link was written.
     pub link_type: LinkType,
+    /// The link label that has no definition.
     pub reference: CowStr<'a>,
 }
 
@@ -2185,6 +2189,7 @@ pub(crate) struct HtmlScanGuard {
 /// See [Parser::new_with_broken_link_callback].
 /// Automatically implemented for closures with the appropriate signature.
 pub trait BrokenLinkCallback<'input> {
+    /// Resolves a broken link to a destination URL and a title, or `None` to leave it as text.
     fn handle_broken_link(
         &mut self,
         link: BrokenLink<'input>,

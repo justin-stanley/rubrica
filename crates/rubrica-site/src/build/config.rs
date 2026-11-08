@@ -101,6 +101,10 @@ impl BuildConfig {
     /// feed source ending in `.md`, with a `base_url` to make its IRIs
     /// absolute. No value may hold a control character, a quote, `<`, `>`
     /// or a blank.
+    ///
+    /// # Errors
+    ///
+    /// A message naming the first value that breaks a rule above.
     pub fn validate(&self) -> Result<(), String> {
         if self.name.trim().is_empty() {
             return Err("name is empty".into());
@@ -279,6 +283,11 @@ impl ConfigFile {
     /// Both halves of one file: the build's and the site's. A `None` key is
     /// that field of `SiteConfig::default()`; an absent `[site]` is
     /// `SiteConfig::default()` whole.
+    ///
+    /// # Errors
+    ///
+    /// A message naming the first problem: a `wiki_origin` that is no origin, a `feed_url`
+    /// without a `feed_source` (or the reverse), or a value [`BuildConfig::validate`] refuses.
     pub fn into_configs(self) -> Result<(BuildConfig, SiteConfig), String> {
         let f = self;
         let mut site_cfg = SiteConfig::default();

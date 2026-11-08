@@ -223,6 +223,14 @@ pub fn refusals(site: &Site) -> Vec<&Finding> {
 /// `<path>.md`). Refuses, writing nothing, a site with [`refusals`] or no
 /// published home page (so none at all). The same site, configuration and history give the same
 /// files, byte for byte.
+///
+/// # Errors
+///
+/// [`BuildError::Refused`] for a site with [`refusals`] or no home page,
+/// [`BuildError::Config`] for a configuration that does not fit the site,
+/// [`BuildError::OutputOverBudget`] when the output passes [`MAX_OUTPUT_BYTES`], and
+/// [`BuildError::Io`] when `source` or `write` fails. On any error the caller removes
+/// whatever `write` already received.
 pub fn build(
     site: &Site,
     cfg: &BuildConfig,

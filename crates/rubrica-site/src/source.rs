@@ -322,6 +322,10 @@ impl PagePath {
     /// (`scripts/x`), and code that names a new page file must use
     /// [`crate::Site::check_new_page`] (that rule and the files already
     /// there), not this.
+    ///
+    /// # Errors
+    ///
+    /// A [`BadPath`] naming what is wrong with `s`.
     pub fn new(s: &str) -> Result<Self, BadPath> {
         if s.len() > MAX_PATH_BYTES {
             return Err(BadPath::TooLong);
@@ -410,6 +414,10 @@ pub enum BadOrigin {
 impl Origin {
     /// An origin, checked. Compared case-sensitively, as Wiki.js's
     /// html-core compares `WIKI.config.host` (`href.indexOf(host + '/') === 0`).
+    ///
+    /// # Errors
+    ///
+    /// A [`BadOrigin`] when `s` is not a bare `http(s)` origin.
     pub fn new(s: &str) -> Result<Self, BadOrigin> {
         let host = s
             .strip_prefix("https://")
@@ -781,6 +789,10 @@ pub(crate) fn path_over_limits(path: &str) -> Option<BadPath> {
 /// [`crate::Finding::IndexPageWithoutSection`]): the editor and
 /// renames name new files through [`crate::Site::check_new_page`],
 /// which applies both.
+///
+/// # Errors
+///
+/// [`NotAPage`] with the reason the file is no page.
 pub fn page_path_for_new_file(path: &str, cfg: &SiteConfig) -> Result<PagePath, NotAPage> {
     if let Some(why) = path_over_limits(path) {
         return Err(NotAPage::BadPath(why));

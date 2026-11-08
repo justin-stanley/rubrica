@@ -4,6 +4,7 @@ Cargo.toml
 Cargo.toml.orig
 PACKAGE-FILES
 README.md
+examples/build.rs
 src/build/config.rs
 src/build/feed.rs
 src/build/highlight.rs

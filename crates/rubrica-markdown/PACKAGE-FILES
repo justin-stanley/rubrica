@@ -17,6 +17,7 @@ src/strings.rs
 src/textmerge.rs
 src/tree.rs
 tests/autolink.rs
+tests/error_impls.rs
 tests/linear.rs
 tests/offsets.rs
 tests/provenance.rs

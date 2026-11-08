@@ -19,7 +19,10 @@ fn invalid_heading_level_is_an_error() {
 
 #[test]
 fn string_too_long_is_an_error() {
-    let e = boxed(InlineStr::try_from("this string is far too long to be inline")).unwrap_err();
+    let e = boxed(InlineStr::try_from(
+        "this string is far too long to be inline",
+    ))
+    .unwrap_err();
     assert!(e.source().is_none());
     assert!(!e.to_string().is_empty());
 }

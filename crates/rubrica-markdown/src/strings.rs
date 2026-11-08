@@ -31,6 +31,14 @@ const MAX_INLINE_STR_LEN: usize = 3 * std::mem::size_of::<isize>() - 2;
 #[derive(Debug)]
 pub struct StringTooLongError;
 
+impl fmt::Display for StringTooLongError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("the string does not fit an inline string")
+    }
+}
+
+impl std::error::Error for StringTooLongError {}
+
 /// An inline string that can contain almost three words
 /// of utf-8 text.
 #[derive(Debug, Clone, Copy, Eq)]

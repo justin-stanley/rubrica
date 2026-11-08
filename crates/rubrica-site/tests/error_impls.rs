@@ -24,7 +24,10 @@ fn display_text_is_unchanged() {
         text(BuildError::Refused),
         "the site has findings it cannot be built with"
     );
-    assert_eq!(text(BuildError::Config("no such page".into())), "no such page");
+    assert_eq!(
+        text(BuildError::Config("no such page".into())),
+        "no such page"
+    );
     assert_eq!(
         text(BuildError::OutputOverBudget { limit: 9 }),
         "the site would be more than 9 bytes"

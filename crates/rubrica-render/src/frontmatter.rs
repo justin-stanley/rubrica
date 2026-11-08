@@ -60,6 +60,18 @@ pub struct FrontMatterError {
     pub kind: FrontMatterErrorKind,
 }
 
+impl std::fmt::Display for FrontMatterError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.line == 0 {
+            write!(f, "{}", self.kind)
+        } else {
+            write!(f, "line {}: {}", self.line, self.kind)
+        }
+    }
+}
+
+impl std::error::Error for FrontMatterError {}
+
 /// The kinds of [`FrontMatterError`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FrontMatterErrorKind {
@@ -270,6 +282,32 @@ fn is_fence(line: &str, close: bool) -> bool {
         .strip_prefix("---")
         .or_else(|| line.strip_prefix("...").filter(|_| close));
     rest.is_some_and(|r| r.bytes().all(|b| b == b' ' || b == b'\t'))
+}
+
+impl std::fmt::Display for FrontMatterErrorKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Missing => f.write_str("no front matter: the first line is not ---"),
+            Self::BareCarriageReturns => f.write_str(
+                "a bare carriage return in the front matter: Rubrica reads LF and CRLF line ends only",
+            ),
+            Self::Unterminated => f.write_str("the front matter has no closing ---"),
+            Self::Yaml(e) => write!(f, "the front matter is not a YAML mapping: {e}"),
+            Self::NoTitle => f.write_str("the front matter has no title"),
+            Self::BadValue { key, expected } => write!(f, "{key} is not {expected}"),
+            Self::TooLarge { bytes } => write!(
+                f,
+                "the front matter is {bytes} bytes, over Rubrica's limit of {MAX_FRONT_MATTER_BYTES}"
+            ),
+            Self::Anchor => f.write_str("a YAML anchor (&…) in the front matter"),
+            Self::Alias => f.write_str("a YAML alias (*…) in the front matter"),
+            Self::Tag => f.write_str("an explicit YAML tag (!…) in the front matter"),
+            Self::TooDeep => write!(
+                f,
+                "the front matter nests deeper than {MAX_FRONT_MATTER_DEPTH}"
+            ),
+        }
+    }
 }
 
 fn err(line: usize, kind: FrontMatterErrorKind) -> FrontMatterError {

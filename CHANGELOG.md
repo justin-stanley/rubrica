@@ -46,3 +46,9 @@ vulnerabilities are named here too (see [SECURITY.md](SECURITY.md)).
 - Build-time syntax highlighting.
 - Releases for Linux x86_64 and aarch64 (static), macOS on Apple Silicon (best effort) and a
   multi-architecture container image, each attested, from signed tags; the crates on crates.io.
+- `std::error::Error` for every public error type: `BuildError`, `FrontMatterError`, the markdown
+  crate's `InvalidHeadingLevel` and its inline-string error, so `?` converts them into
+  `Box<dyn Error>` and `anyhow`. `BuildError::Io` returns its `io::Error` from `source()`.
+  `FrontMatterError` and `FrontMatterErrorKind` gain the `Display` they lacked, the text
+  `rubrica check` already printed, behind a `line N:` prefix on the error. The `build` example
+  uses `?` directly.

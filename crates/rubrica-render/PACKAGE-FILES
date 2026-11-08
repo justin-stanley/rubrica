@@ -28,6 +28,7 @@ src/uslug_tables.rs
 src/writer.rs
 tests/code.rs
 tests/deep_nesting.rs
+tests/error_impls.rs
 tests/fixtures/md/block-scalars.md
 tests/fixtures/md/gfm.md
 tests/fixtures/sec-harvest-differential.json

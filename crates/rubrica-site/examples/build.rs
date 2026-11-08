@@ -80,8 +80,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             written.push((path.to_owned(), bytes.len()));
             Ok(())
         },
-    )
-    .map_err(|e| e.to_string())?;
+    )?;
 
     println!(
         "{} pages, {} files, {} bytes in {}",

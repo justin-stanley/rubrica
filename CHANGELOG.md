@@ -46,3 +46,8 @@ vulnerabilities are named here too (see [SECURITY.md](SECURITY.md)).
 - Build-time syntax highlighting.
 - Releases for Linux x86_64 and aarch64 (static), macOS on Apple Silicon (best effort) and a
   multi-architecture container image, each attested, from signed tags; the crates on crates.io.
+- Coverage reports in CI: a readable summary per crate and file, a lines-coverage floor for each
+  crate in `coverage-floor.toml` (the job fails more than 0.5 points below it, or with no floor),
+  and the HTML report with a badge file published to GitHub Pages on a push to `main`. The site
+  carries no script. `scripts/test-coverage-summary.sh` tests the summary, the floors and the
+  site against fixture and planted reports.

@@ -150,9 +150,14 @@ jobs:
         run: cargo test --locked -p rubrica-markdown --test spec
 
   # Coverage, measured in house. cargo-llvm-cov runs the workspace's tests with instrumented
-  # builds; the summary table goes to this run's summary page and the HTML report is kept as an
-  # artifact. Nothing leaves GitHub: no coverage service, no upload, no credential, no badge.
-  # It is a report, not a required check. The tool's version is bumped deliberately.
+  # builds. scripts/coverage-summary.sh turns its JSON into the run's summary page (a table per
+  # crate, lowest first, then a per-file table for each) and holds every crate to its floor in
+  # coverage-floor.toml: the last step fails the job when a crate is more than 0.5 points below
+  # its floor or has none. The HTML report is kept as an artifact, and on a push to main
+  # (never a pull request) it is also staged as a script-free site, which `coverage-pages`
+  # publishes to GitHub Pages. Nothing leaves GitHub but that: no coverage service, no upload
+  # to one, no credential. It is a report with floors, not a required check. The tool's version
+  # is bumped deliberately.
   coverage:
     name: coverage
     needs: wasm
@@ -177,24 +182,52 @@ jobs:
           cargo install cargo-llvm-cov@0.9.1 --locked
       - name: Run the workspace's tests, instrumented
         run: cargo llvm-cov --workspace --all-features --locked --no-report
-      - name: Write the summary table
+      - name: Build the reports
         run: |
           set -euo pipefail
-          {
-            echo '### Coverage'
-            echo
-            echo '```text'
-            cargo llvm-cov report
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
-      - name: Build the HTML report
-        run: cargo llvm-cov report --html
+          cargo llvm-cov report --html
+          cargo llvm-cov report --json --summary-only --output-path target/llvm-cov/summary.json
+      # The summary first: it fails the job for a crate below its floor (or without one), after
+      # writing the table and the badge file. The steps after it still run for the artifact.
+      - name: Summary and floors
+        run: |
+          set -euo pipefail
+          scripts/coverage-summary.sh target/llvm-cov/summary.json coverage-floor.toml --badge target/llvm-cov/badge.json >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() }}
         with:
           name: coverage-html
           path: target/llvm-cov/html
           if-no-files-found: error
           retention-days: 14
+      # Pull requests do not publish, and neither does a run whose floors failed: the site is
+      # staged only on a push to main, after the summary step succeeded.
+      - name: Stage the Pages site
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: scripts/coverage-site.sh target/llvm-cov/html target/llvm-cov/badge.json target/pages
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        with:
+          path: target/pages
+
+  # Publishes the coverage site to https://justin-stanley.github.io/rubrica/ on a push to main,
+  # after the coverage job (so after its floors held). The only job with `pages: write` and
+  # `id-token: write`, and it runs no code of the repository's: one step, the official deploy
+  # action, which publishes the artifact the coverage job uploaded.
+  coverage-pages:
+    name: coverage-pages
+    needs: coverage
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
 
   linear:
     name: linear

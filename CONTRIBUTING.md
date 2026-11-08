@@ -46,7 +46,7 @@ CI runs on every pull request, forks included, and all of these must pass before
 | `Dependency review` | no vulnerable or disallowed dependency enters |
 | `CodeQL` | static analysis of the Rust code and the workflows |
 
-The `coverage` job also runs; see [Coverage](#coverage). It reports, it does not gate.
+The `coverage` job also runs; see [Coverage](#coverage). It is not a required check, but it fails when a crate falls more than 0.5 points below its floor.
 
 ## The gate
 
@@ -82,9 +82,31 @@ way, because a shared target directory once ran another checkout's stale test bi
 ### Coverage
 
 Coverage is measured in house, with [`cargo-llvm-cov`](https://github.com/taiki-e/cargo-llvm-cov),
-and shared with no service: the `coverage` job in CI runs it over the whole workspace, writes
-the summary table into the run's summary page, and keeps the HTML report as the
-`coverage-html` artifact of the run. To see it locally:
+and shared with no coverage service. The `coverage` job in CI runs it over the whole workspace
+and writes the run's summary page: a table per crate (lines, functions and regions, lowest
+lines coverage first, with a workspace row), then a collapsible per-file table for each crate.
+The HTML report is kept as the `coverage-html` artifact of the run. `scripts/coverage-summary.sh`
+makes the summary from `cargo llvm-cov report --json --summary-only`, and
+`scripts/test-coverage-summary.sh` tests it against fixture reports (the gate runs that).
+
+**Floors.** [`coverage-floor.toml`](coverage-floor.toml) holds a lines-coverage floor for each
+crate. The summary shows each crate's coverage, its floor and the difference. The job fails when
+a crate is more than 0.5 points below its floor, and when a crate has no floor (a new crate gets
+one in the pull request that adds it) or a floor names a crate the report lacks. A floor is a
+percentage with one decimal, started at the crate's coverage rounded down, minus 1.0. To raise
+one, change that one line in a pull request; it is reviewed like any other change. Lower one only
+with the reason in the pull request.
+
+**The report on the web.** On a push to `main` (never on a pull request) the job publishes the
+HTML report to <https://justin-stanley.github.io/rubrica/coverage/> with GitHub Pages, through
+the `coverage-pages` job, the only one with `pages: write`. The site has no script: llvm-cov's
+one is removed and `scripts/coverage-site.sh` fails if any is left. `coverage/badge.json` there
+feeds the README badge (a [shields.io endpoint](https://shields.io/badges/endpoint-badge) file).
+The badge shows the workspace's lines coverage, coloured by band: `brightgreen` at 90% and
+above, `green` from 80%, `yellowgreen` from 70%, `yellow` from 60%, `orange` from 50%, `red`
+below.
+
+To see the report locally:
 
 ```sh
 rustup component add llvm-tools-preview

@@ -18,6 +18,8 @@ Some *emphasis*, a [link to another page](/notes/birds#owls) and an
 <script>alert(1)</script>
 ";
 
+    // The page ends with a <script> tag. The sanitizer removes the tag, so the output keeps
+    // only its text, `alert(1)`, as plain, harmless text.
     let rendered = render(markdown, &RenderOptions::native());
     print!("{}", rendered.html);
 

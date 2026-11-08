@@ -93,7 +93,7 @@ done
 
 # 5. The job-level names of ci.yml.
 names=$(ruby -ryaml -e 'd = YAML.load_file(ARGV[0]); p d["jobs"].values.map { |j| j["name"] }.sort' "$wf/ci.yml")
-want_names='["MSRV", "Rust", "Secret scan", "cargo audit", "cargo deny", "coverage", "linear", "linear-arm64", "no-js", "package", "spec", "wasm"]'
+want_names='["MSRV", "Rust", "Secret scan", "cargo audit", "cargo deny", "coverage", "linear", "linear-arm64 (${{ matrix.shard }})", "no-js", "package", "spec", "wasm"]'
 [ "$names" = "$want_names" ] || bad "ci.yml job names are $names, want $want_names"
 
 # 6. YAML parses.
@@ -415,6 +415,65 @@ for k in runner render markdown; do
 done
 grep_status -c 'ubuntu-24\.04-arm' "$wf/ci.yml"
 [ "$out" = 1 ] || bad "ci.yml has ubuntu-24.04-arm $out times, want 1"
+
+# ci.yml: a job that shards the release linear matrices (RUBRICA_LINEAR_SHARD=i/N, read by
+# crates/rubrica-render/tests/linear.rs and crates/rubrica-markdown/tests/linear.rs) lists
+# every shard 1/N .. N/N exactly once in its matrix, sets RUBRICA_LINEAR_SHARD from the matrix
+# and RUBRICA_LINEAR_CI=1, keeps fail-fast off so one shard's failure hides no other, is named
+# "<job id> (${{ matrix.shard }})" (the required check names are "linear-arm64 (1/4)" to
+# "linear-arm64 (4/4)"), and runs both crates' linear tests with --release. linear-arm64 must
+# be sharded in 4. shard_failures FILE prints one line per property that does not hold, for
+# the job that must be sharded and for any other that is; the planted variants below must each
+# produce the line they break. The Ruby text is matched literally.
+# shellcheck disable=SC2016
+shard_failures() {
+  ruby -ryaml -e '
+    jobs = YAML.load_file(ARGV[0])["jobs"] || {}
+    sharded = jobs.select do |_, j|
+      ((j["strategy"] || {})["matrix"] || {}).key?("shard") ||
+        (j["steps"] || []).map { |s| s["run"].to_s }.join("\n").include?("RUBRICA_LINEAR_SHARD") ||
+        (j["env"] || {}).key?("RUBRICA_LINEAR_SHARD")
+    end
+    puts "linear-arm64 is not sharded" unless sharded.key?("linear-arm64")
+    sharded.each do |n, j|
+      m = (j["strategy"] || {})["matrix"] || {}
+      shards = Array(m["shard"]).map(&:to_s)
+      denom = shards.first.to_s.split("/").last.to_i
+      want = (1..denom).map { |i| "#{i}/#{denom}" }
+      puts "#{n}: the matrix lists #{shards.inspect}, want each of #{want.inspect} once" unless denom >= 2 && shards.sort == want.sort
+      puts "#{n}: sharded in #{denom}, want 4" if n == "linear-arm64" && denom != 4
+      env = j["env"] || {}
+      puts "#{n}: RUBRICA_LINEAR_SHARD is #{env["RUBRICA_LINEAR_SHARD"].inspect}, want ${{ matrix.shard }}" unless env["RUBRICA_LINEAR_SHARD"].to_s == "${{ matrix.shard }}"
+      puts "#{n}: RUBRICA_LINEAR_CI is not 1" unless env["RUBRICA_LINEAR_CI"].to_s == "1"
+      puts "#{n}: fail-fast is not false" unless (j["strategy"] || {})["fail-fast"] == false
+      puts "#{n}: the name is #{j["name"].inspect}, want #{n} (${{ matrix.shard }})" unless j["name"] == "#{n} (${{ matrix.shard }})"
+      t = (j["steps"] || []).map { |s| s["run"].to_s }.join("\n")
+      %w[rubrica-render rubrica-markdown].each do |c|
+        puts "#{n}: does not run cargo test --locked -p #{c} --test linear --release" unless t.include?("cargo test --locked -p #{c} --test linear --release")
+      end
+    end
+  ' "$1"
+}
+shard_report=$(shard_failures "$wf/ci.yml" 2>&1) || bad "the linear shard check failed: $shard_report"
+[ -z "$shard_report" ] || bad "ci.yml linear shards: $(printf '%s' "$shard_report" | tr '\n' ';')"
+shard_variant() { # NAME WANT SED_EXPR: the variant of ci.yml built with the expression reports WANT
+  local name=$1 want=$2 expr=$3 got
+  sed "$expr" "$wf/ci.yml" > "$notes_tmp/shard.yml"
+  if cmp -s "$wf/ci.yml" "$notes_tmp/shard.yml"; then bad "shard variant ($name): the edit changed nothing"; return; fi
+  got=$(shard_failures "$notes_tmp/shard.yml" 2>&1) || { bad "shard variant ($name): $got"; return; }
+  printf '%s\n' "$got" | grep -qF "$want" || bad "shard variant ($name): not reported (wanted [$want], got [$got])"
+}
+if [ -z "$shard_report" ]; then
+  shard_variant "a missing shard" "the matrix lists" 's#, "4/4"\]#]#'
+  shard_variant "a duplicate shard" "the matrix lists" 's#"4/4"\]#"3/4"]#'
+  shard_variant "a shard of another total" "the matrix lists" 's#"4/4"\]#"4/5"]#'
+  shard_variant "no shard in the env" "RUBRICA_LINEAR_SHARD is" 's#RUBRICA_LINEAR_SHARD: \${{ matrix.shard }}#RUBRICA_LINEAR_SHARD: "1/4"#'
+  shard_variant "no hosted-CI switch" "RUBRICA_LINEAR_CI is not 1" 's#RUBRICA_LINEAR_CI: "1"#RUBRICA_LINEAR_CI: "0"#'
+  shard_variant "fail-fast on" "fail-fast is not false" 's#fail-fast: false#fail-fast: true#'
+  shard_variant "an unstable name" "the name is" 's#name: linear-arm64 (\${{ matrix.shard }})#name: linear-arm64#'
+  shard_variant "no --release for the renderer" "does not run cargo test --locked -p rubrica-render" 's#cargo test --locked -p rubrica-render --test linear --release#cargo test --locked -p rubrica-render --test linear#'
+  shard_variant "no --release for the parser" "does not run cargo test --locked -p rubrica-markdown" 's#cargo test --locked -p rubrica-markdown --test linear --release#cargo test --locked -p rubrica-markdown --test linear#'
+fi
 
 # ci.yml: both linear jobs set the hosted-runner switch RUBRICA_LINEAR_CI=1 (a wider ratio and
 # a best of five, read by the linear tests); nothing else in the workflows sets it, and the

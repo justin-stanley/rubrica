@@ -43,6 +43,7 @@
 
 #![forbid(unsafe_code)]
 #![warn(missing_debug_implementations)]
+#![warn(missing_docs)]
 // vendored; lints silenced, not fixed
 #![allow(
     clippy::large_const_arrays,

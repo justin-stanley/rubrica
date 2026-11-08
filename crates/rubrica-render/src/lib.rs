@@ -4,6 +4,8 @@
 //! compare it with Wiki.js by ([`skeleton`]). No git, HTTP or template
 //! dependency: `&str` in, rendered output out.
 
+#![warn(missing_docs)]
+
 mod adapt;
 mod dom_clobber;
 pub mod frontmatter;

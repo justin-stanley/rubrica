@@ -3,6 +3,8 @@
 //! (never committed; CI builds them, checks a second build gives the same bytes, and
 //! attests them).
 
+#![warn(missing_docs)]
+
 /// The search module (`rubrica-search_bg.wasm`).
 pub const WASM: &[u8] = include_bytes!("rubrica-search_bg.wasm");
 

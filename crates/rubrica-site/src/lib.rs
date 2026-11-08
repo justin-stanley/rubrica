@@ -41,6 +41,8 @@
 //! `tests/memory.rs` checks that one is alive at a time and the index's
 //! size per id byte.
 
+#![warn(missing_docs)]
+
 pub mod build;
 pub mod cache;
 pub mod finding;

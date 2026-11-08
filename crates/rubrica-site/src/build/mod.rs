@@ -192,6 +192,15 @@ impl fmt::Display for BuildError {
     }
 }
 
+impl std::error::Error for BuildError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Io(e) => Some(e),
+            Self::Refused | Self::Config(_) | Self::OutputOverBudget { .. } => None,
+        }
+    }
+}
+
 impl From<io::Error> for BuildError {
     fn from(e: io::Error) -> Self {
         Self::Io(e)

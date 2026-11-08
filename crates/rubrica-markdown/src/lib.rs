@@ -550,6 +550,14 @@ impl Display for HeadingLevel {
 #[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
 pub struct InvalidHeadingLevel(usize);
 
+impl std::fmt::Display for InvalidHeadingLevel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} is not a heading level (1 to 6)", self.0)
+    }
+}
+
+impl std::error::Error for InvalidHeadingLevel {}
+
 impl TryFrom<usize> for HeadingLevel {
     type Error = InvalidHeadingLevel;
 

@@ -238,8 +238,8 @@ done
 [ "$gated" = "$want_gated" ] || bad "release.yml: jobs gated by the first job are [$gated], want [$want_gated]"
 
 # 12c. The signers file the verifier reads: one line per key, the owner's
-# principal then a key of a known type and its base64, or the single pending marker until the
-# owner's key is in.
+# principal then a key of a known type and its base64. The pending marker is refused: the
+# owner's key is in, and a release must never again be blocked by it.
 signers=$gh_dir/allowed_signers
 if [ ! -f "$signers" ]; then
   bad "$signers is missing"
@@ -247,9 +247,12 @@ else
   n=0
   while IFS= read -r line || [ -n "$line" ]; do
     n=$((n + 1))
-    [ "$line" = OWNER-SIGNING-KEY-PENDING ] && continue
+    if [ "$line" = OWNER-SIGNING-KEY-PENDING ]; then
+      bad "$signers line $n is the pending marker; the owner's key belongs there"
+      continue
+    fi
     printf '%s\n' "$line" | grep -qE '^[^ #]+ (ssh-ed25519|sk-ssh-ed25519@openssh\.com|ecdsa-sha2-nistp256|sk-ecdsa-sha2-nistp256@openssh\.com) [A-Za-z0-9+/]+=*( .*)?$' \
-      || bad "$signers line $n is neither the pending marker nor 'principal key-type base64'"
+      || bad "$signers line $n is not 'principal key-type base64'"
   done < "$signers"
   [ "$n" -ge 1 ] || bad "$signers is empty"
 fi

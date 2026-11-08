@@ -30,6 +30,11 @@ env:
   # file. Bump both together.
   ACTIONLINT_VERSION: 1.7.12
   ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+  # cargo-nextest, as the release's x86_64-unknown-linux-gnu tarball (a pre-built binary: a
+  # `cargo install` would add minutes to each of the three jobs that run tests); the sha256
+  # is from its release's .sha256 file. Bump both together.
+  NEXTEST_VERSION: 0.9.151
+  NEXTEST_SHA256: 1d4ce302b820c41f4b89c5fb9bce45f0f0c94882c1cf08fc360caf08be6e7df4
 
 jobs:
   # The search page's wasm bundle, built once here with the pinned toolchain and the pinned
@@ -38,6 +43,17 @@ jobs:
   # (scripts/wasm-reproducible.sh), the .wasm and the loader are held to their size budget,
   # and the embed is tested. Its files are never committed: the jobs that build
   # rubrica-site with its default features download them from here.
+  #
+  # The built bundle is cached (CI only: release.yml builds and attests its own and never
+  # uses this cache). The key is every input of the bytes: the two crates (less the bundle
+  # crate's git-ignored outputs), the root manifest (the wasm profile and the pins) and
+  # Cargo.lock, the toolchain file, the CLI's version, the two scripts and this file. On a hit
+  # the toolchain, the target, the CLI and both builds are skipped; the checks that need no
+  # build still run (scripts/wasm-bundle-check.sh: the size budgets, the sha256 recorded when
+  # the entry was made, the CLI's version) and the artifact is uploaded as ever. On a miss the
+  # job is what it was: the build, the second build that must give the same bytes, the embed
+  # test; the entry is saved when the job succeeds. No restore-keys: an older entry is never
+  # taken for this one.
   wasm:
     name: wasm
     runs-on: ubuntu-latest
@@ -45,22 +61,45 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
+      - id: wasm-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            crates/rubrica-wasm-bundle/src/rubrica-search_bg.wasm
+            crates/rubrica-wasm-bundle/src/rubrica-search.js
+            crates/rubrica-wasm-bundle/src/meta.rs
+            target/wasm-bundle.sha256
+          key: wasm-bundle-v1-${{ runner.os }}-bindgen-0.2.126-${{ hashFiles('crates/rubrica-wasm/**', 'crates/rubrica-wasm-bundle/**', '!crates/rubrica-wasm-bundle/src/*.js', '!crates/rubrica-wasm-bundle/src/*.wasm', '!crates/rubrica-wasm-bundle/src/meta.rs', 'Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml', 'scripts/build-wasm.sh', 'scripts/wasm-reproducible.sh', '.github/workflows/ci.yml') }}
       # No `toolchain:` input: the action honours rust-toolchain.toml (1.97.0). The target is
       # added to that toolchain, the one cargo runs here.
       - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
+        if: steps.wasm-cache.outputs.cache-hit != 'true'
       - uses: Swatinem/rust-cache@c8037a86dde8214a8310e9f54a8fc61ab362aa31 # v2
+        if: steps.wasm-cache.outputs.cache-hit != 'true'
       - name: The wasm target and the wasm-bindgen CLI, pinned
+        if: steps.wasm-cache.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
           rustup target add wasm32-unknown-unknown
           cargo install wasm-bindgen-cli@0.2.126 --locked
       - name: Build the bundle; a second build gives the same bytes
+        if: steps.wasm-cache.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
           scripts/build-wasm.sh --bundle
           scripts/wasm-reproducible.sh
+      # What goes in the cache entry beside the files: their sha256, checked on a hit.
+      - name: Record the bundle's checksums for the cache entry
+        if: steps.wasm-cache.outputs.cache-hit != 'true'
+        run: scripts/wasm-bundle-check.sh --write
       - name: The bundle crate, and the site that embeds it
+        if: steps.wasm-cache.outputs.cache-hit != 'true'
         run: cargo test --locked -p rubrica-wasm-bundle -p rubrica-site
+      # The checks a restored bundle gets, which need no build. (The embed is tested by the
+      # `Rust` job on every run: the workspace's tests include these two crates.)
+      - name: Check the cached bundle
+        if: steps.wasm-cache.outputs.cache-hit == 'true'
+        run: scripts/wasm-bundle-check.sh --verify
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: wasm-bundle
@@ -75,6 +114,9 @@ jobs:
     name: Rust
     needs: wasm
     runs-on: ubuntu-latest
+    env:
+      # scripts/run-tests.sh fails, rather than fall back to `cargo test`, without nextest.
+      RUBRICA_REQUIRE_NEXTEST: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -97,6 +139,15 @@ jobs:
           tar -xzf /tmp/actionlint.tar.gz -C /tmp actionlint
           install -m 0755 /tmp/actionlint "$RUNNER_TEMP/actionlint"
           echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+      - name: Install cargo-nextest
+        run: |
+          set -euo pipefail
+          url="https://github.com/nextest-rs/nextest/releases/download/cargo-nextest-${NEXTEST_VERSION}/cargo-nextest-${NEXTEST_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+          curl -sSfL "$url" -o /tmp/nextest.tar.gz
+          echo "${NEXTEST_SHA256}  /tmp/nextest.tar.gz" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/nextest"
+          tar -xzf /tmp/nextest.tar.gz -C "$RUNNER_TEMP/nextest" cargo-nextest
+          echo "$RUNNER_TEMP/nextest" >> "$GITHUB_PATH"
       - name: scripts/ci.sh
         env:
           RUBRICA_CI_SPLIT: "1" # deny and audit run as their own jobs below
@@ -111,6 +162,8 @@ jobs:
       # test the MSRV. Keep it equal to `rust-version` in Cargo.toml (the first
       # step fails if it drifts).
       RUSTUP_TOOLCHAIN: "1.94"
+      # scripts/run-tests.sh fails, rather than fall back to `cargo test`, without nextest.
+      RUBRICA_REQUIRE_NEXTEST: "1"
     needs: wasm
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -130,12 +183,23 @@ jobs:
         with:
           toolchain: "1.94"
       - uses: Swatinem/rust-cache@c8037a86dde8214a8310e9f54a8fc61ab362aa31 # v2
+      # The release binary is not built with the MSRV: it asks cargo (the 1.94 one here) to
+      # build the tests, then runs the binaries cargo built.
+      - name: Install cargo-nextest
+        run: |
+          set -euo pipefail
+          url="https://github.com/nextest-rs/nextest/releases/download/cargo-nextest-${NEXTEST_VERSION}/cargo-nextest-${NEXTEST_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+          curl -sSfL "$url" -o /tmp/nextest.tar.gz
+          echo "${NEXTEST_SHA256}  /tmp/nextest.tar.gz" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/nextest"
+          tar -xzf /tmp/nextest.tar.gz -C "$RUNNER_TEMP/nextest" cargo-nextest
+          echo "$RUNNER_TEMP/nextest" >> "$GITHUB_PATH"
       - name: Build and test on the MSRV
         run: |
           set -euo pipefail
           rustc --version | grep -F ' 1.94.'
           cargo build --locked --all-features
-          cargo test --locked --all-features
+          scripts/run-tests.sh
 
   spec:
     name: spec
@@ -180,8 +244,21 @@ jobs:
           set -euo pipefail
           rustup component add llvm-tools-preview
           cargo install cargo-llvm-cov@0.9.1 --locked
+      - name: Install cargo-nextest
+        run: |
+          set -euo pipefail
+          url="https://github.com/nextest-rs/nextest/releases/download/cargo-nextest-${NEXTEST_VERSION}/cargo-nextest-${NEXTEST_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+          curl -sSfL "$url" -o /tmp/nextest.tar.gz
+          echo "${NEXTEST_SHA256}  /tmp/nextest.tar.gz" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/nextest"
+          tar -xzf /tmp/nextest.tar.gz -C "$RUNNER_TEMP/nextest" cargo-nextest
+          echo "$RUNNER_TEMP/nextest" >> "$GITHUB_PATH"
+      # Under nextest (doctests are not measured). cargo-llvm-cov has a --profile of its own,
+      # cargo's, so the nextest profile is chosen in the environment.
       - name: Run the workspace's tests, instrumented
-        run: cargo llvm-cov --workspace --all-features --locked --no-report
+        env:
+          NEXTEST_PROFILE: ci
+        run: cargo llvm-cov nextest --workspace --all-features --locked --no-report
       - name: Build the reports
         run: |
           set -euo pipefail

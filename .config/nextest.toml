@@ -1,0 +1,29 @@
+# cargo-nextest's configuration. scripts/run-tests.sh runs the workspace's tests with
+# `--profile ci` wherever nextest is installed (CI always); tools/public-workflows-check.sh
+# holds the shape of this file.
+
+[profile.default]
+# Every failure is listed, not only the first.
+fail-fast = false
+
+# The gate's profile. A failed test is a failure: nothing is retried, so a flaky test stays
+# visible (tools/public-workflows-check.sh refuses a `retries` above 0 anywhere).
+[profile.ci]
+fail-fast = false
+retries = 0
+
+# nextest runs tests of different binaries at the same time (cargo test ran the binaries one
+# after another), so a test that asserts wall-clock time in a debug build meets more load than
+# it used to. The ones with a wide margin (a limit 20 to 70 times what the test takes, and
+# nothing close to it) are left alone; see the list in the commit that added this file. The
+# tree bombs below take 10 s or more of their 30 s on a busy machine, so they do not run
+# together: a limit this near is not made safe by a wider one, and a bomb that is not refused
+# fast must fail on its own account, not another bomb's load. (A group limits only the tests
+# in it; it does not stop others running beside them.) The linear-time tests assert time in
+# release builds only, and not here.
+[test-groups]
+wall-clock = { max-threads = 1 }
+
+[[profile.default.overrides]]
+filter = 'package(rubrica) & binary(build) & (test(=a_tree_bomb_is_refused_quickly) | test(=a_tree_bomb_of_names_that_are_not_utf8_is_refused_with_its_problems_bounded))'
+test-group = 'wall-clock'

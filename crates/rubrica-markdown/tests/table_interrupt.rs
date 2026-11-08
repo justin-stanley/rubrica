@@ -121,6 +121,16 @@ fn definitions_then_an_underline_then_a_pipe_row_open_a_table() {
     );
 }
 
+/// The documented lazy-header deviation holds for a list item and a header with a leading
+/// pipe too (a fuzz finding): the table opens inside the item, the row after it is outside.
+#[test]
+fn a_pipe_header_on_a_lazy_line_opens_the_table_inside_the_item() {
+    assert_eq!(
+        shape("+ u\n|2\n  -|\n2|"),
+        "<list><li>u<table><head><cell>2</cell></head></table></li></list><p>2|</p>"
+    );
+}
+
 #[test]
 fn an_underline_is_the_header_when_a_one_cell_delimiter_row_follows() {
     assert_eq!(

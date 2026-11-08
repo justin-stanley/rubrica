@@ -31,6 +31,7 @@ templates/recent.html
 templates/redirect.html
 templates/search.html
 tests/build.rs
+tests/error_impls.rs
 tests/fixtures/wikijs-path-differential.json
 tests/highlight.rs
 tests/linear.rs

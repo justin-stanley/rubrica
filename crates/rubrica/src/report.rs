@@ -189,30 +189,7 @@ pub fn sort(items: &mut [Item]) {
 }
 
 fn front_matter_error(kind: &FrontMatterErrorKind) -> String {
-    match kind {
-        FrontMatterErrorKind::Missing => "no front matter: the first line is not ---".into(),
-        FrontMatterErrorKind::BareCarriageReturns => {
-            "a bare carriage return in the front matter: Rubrica reads LF and CRLF line ends only"
-                .into()
-        }
-        FrontMatterErrorKind::Unterminated => "the front matter has no closing ---".into(),
-        FrontMatterErrorKind::Yaml(e) => format!("the front matter is not a YAML mapping: {e}"),
-        FrontMatterErrorKind::NoTitle => "the front matter has no title".into(),
-        FrontMatterErrorKind::BadValue { key, expected } => {
-            format!("{key} is not {expected}")
-        }
-        FrontMatterErrorKind::TooLarge { bytes } => format!(
-            "the front matter is {bytes} bytes, over Rubrica's limit of {}",
-            rubrica_render::frontmatter::MAX_FRONT_MATTER_BYTES
-        ),
-        FrontMatterErrorKind::Anchor => "a YAML anchor (&…) in the front matter".into(),
-        FrontMatterErrorKind::Alias => "a YAML alias (*…) in the front matter".into(),
-        FrontMatterErrorKind::Tag => "an explicit YAML tag (!…) in the front matter".into(),
-        FrontMatterErrorKind::TooDeep => format!(
-            "the front matter nests deeper than {}",
-            rubrica_render::frontmatter::MAX_FRONT_MATTER_DEPTH
-        ),
-    }
+    kind.to_string()
 }
 
 fn front_matter_finding(f: &FrontMatterFinding) -> String {

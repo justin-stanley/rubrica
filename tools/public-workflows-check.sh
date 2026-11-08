@@ -107,6 +107,31 @@ else
   bad "actionlint is not installed"
 fi
 
+# 7b. Every job that runs the gate installs what the gate needs: scripts/ci.sh runs this
+# check, which needs actionlint, so a job running scripts/ci.sh without installing it fails
+# (v0.1.0-rc.1's release check did). The install is the sha256-checked one, with the same
+# pinned version and digest as ci.yml's.
+gate_report=$(ruby -ryaml -e '
+  ver = nil; sha = nil
+  ARGV.each do |f|
+    d = YAML.load_file(f)
+    env = d["env"] || {}
+    (d["jobs"] || {}).each do |id, j|
+      steps = j["steps"] || []
+      runs_gate = steps.any? { |s| s["run"].to_s.lines.any? { |l| l.strip == "scripts/ci.sh" } }
+      next unless runs_gate
+      i_gate = steps.index { |s| s["run"].to_s.lines.any? { |l| l.strip == "scripts/ci.sh" } }
+      i_al = steps.index { |s| s["run"].to_s.include?("actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz") && s["run"].to_s.include?("sha256sum -c") }
+      puts "#{File.basename(f)}:#{id}: runs scripts/ci.sh without installing actionlint first" unless i_al && i_al < i_gate
+      v = env["ACTIONLINT_VERSION"].to_s; h = env["ACTIONLINT_SHA256"].to_s
+      puts "#{File.basename(f)}: no ACTIONLINT_VERSION/ACTIONLINT_SHA256 in its env" if v.empty? || h.empty?
+      ver ||= v; sha ||= h
+      puts "#{File.basename(f)}: actionlint #{v} differs from #{ver}" if v != ver || h != sha
+    end
+  end
+' "$wf/ci.yml" "$wf/release.yml")
+[ -z "$gate_report" ] || bad "$gate_report"
+
 # 8. The MSRV job overrides rustup's toolchain-file choice.
 grep_status -nE '^      RUSTUP_TOOLCHAIN: "1\.94"$' "$wf/ci.yml"
 [ "$rc" -eq 0 ] || bad 'ci.yml has no RUSTUP_TOOLCHAIN: "1.94" in the MSRV job env'

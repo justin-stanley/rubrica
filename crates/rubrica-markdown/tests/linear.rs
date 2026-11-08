@@ -249,11 +249,26 @@ fn assert_linear(name: &str, series: &[(usize, Duration)]) {
     }
 }
 
+/// `RUBRICA_LINEAR_SHARD=i/N` (1-based) runs only the shapes at index `k` of `CASES` with
+/// `k % N == i - 1`; unset runs every shape. CI's `linear-arm64` job runs four shards. A debug
+/// build runs each shape once, at 0.5 MB, with no timing assert.
 #[test]
 fn every_shape_is_linear_with_autolinks_on() {
-    for name in CASES {
+    let shard = shard_from_env();
+    let shapes = shard_shapes(shard);
+    assert!(
+        !shapes.is_empty(),
+        "RUBRICA_LINEAR_SHARD {shard:?} selects none of the {} shapes",
+        CASES.len()
+    );
+    eprintln!(
+        "shard {shard:?}: {} of {} shapes",
+        shapes.len(),
+        CASES.len()
+    );
+    for name in shapes {
         let mut series = Vec::new();
-        let mut sizes = vec![MB / 2, MB, 2 * MB];
+        let mut sizes = sizes_for(cfg!(debug_assertions));
         while let Some(size) = sizes.first().copied() {
             sizes.remove(0);
             let md = case(name, size);
@@ -264,7 +279,7 @@ fn every_shape_is_linear_with_autolinks_on() {
                 took.as_secs_f64()
             );
             // A shape under the floor at 2 MB is re-run at 4 and 8 MB for one real ratio.
-            if size == 2 * MB && took < FLOOR {
+            if cfg!(not(debug_assertions)) && size == 2 * MB && took < FLOOR {
                 sizes.extend([4 * MB, 8 * MB]);
             }
             series.push((size, took));
@@ -274,4 +289,116 @@ fn every_shape_is_linear_with_autolinks_on() {
         #[cfg(debug_assertions)]
         let _ = series;
     }
+}
+
+// ---- sharding and sizes of the matrix -----------------------------------------------------------
+
+/// The matrix's shapes in their fixed order, which the shards are cut from: `CASES` as listed.
+fn all_shapes() -> Vec<&'static str> {
+    CASES.to_vec()
+}
+
+/// `RUBRICA_LINEAR_SHARD=i/N` (1-based) read as `(i, N)`; anything else is an error.
+fn parse_shard(value: &str) -> Result<(usize, usize), String> {
+    let malformed = || {
+        format!(
+            "RUBRICA_LINEAR_SHARD is {value:?}: want i/N with 1 <= i <= N, for example 1/4 \
+             (unset runs every shape)"
+        )
+    };
+    let (i, n) = value.split_once('/').ok_or_else(malformed)?;
+    let digits = |s: &str| !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit());
+    if !digits(i) || !digits(n) {
+        return Err(malformed());
+    }
+    let (i, n) = (
+        i.parse::<usize>().map_err(|_| malformed())?,
+        n.parse::<usize>().map_err(|_| malformed())?,
+    );
+    if i == 0 || i > n {
+        return Err(malformed());
+    }
+    Ok((i, n))
+}
+
+/// The shard `RUBRICA_LINEAR_SHARD` selects: none when it is unset. A malformed value fails
+/// the test, so a typo never runs zero shapes, or all of them, in its place.
+fn shard_from_env() -> Option<(usize, usize)> {
+    match std::env::var("RUBRICA_LINEAR_SHARD") {
+        Err(std::env::VarError::NotPresent) => None,
+        Err(e) => panic!("RUBRICA_LINEAR_SHARD is not readable: {e}"),
+        Ok(v) => Some(parse_shard(&v).unwrap_or_else(|e| panic!("{e}"))),
+    }
+}
+
+/// The shapes of shard `shard`, in the fixed order: the shape at index `k` of `all_shapes()`
+/// belongs to shard `i` of `N` when `k % N == i - 1`. No shard is all of them.
+fn shard_shapes(shard: Option<(usize, usize)>) -> Vec<&'static str> {
+    let Some((i, n)) = shard else {
+        return all_shapes();
+    };
+    all_shapes()
+        .into_iter()
+        .enumerate()
+        .filter(|(k, _)| k % n == i - 1)
+        .map(|(_, name)| name)
+        .collect()
+}
+
+/// The sizes one shape is run at: release runs 0.5, 1 and 2 MB (the matrix may extend them);
+/// debug builds, whose timing asserts are compiled out, run the smallest only.
+fn sizes_for(debug: bool) -> Vec<usize> {
+    if debug {
+        vec![MB / 2]
+    } else {
+        vec![MB / 2, MB, 2 * MB]
+    }
+}
+
+#[test]
+fn the_shards_partition_the_shapes() {
+    let all = all_shapes();
+    for n in 1..=6 {
+        let mut got: Vec<&str> = Vec::new();
+        for i in 1..=n {
+            let shard = shard_shapes(Some((i, n)));
+            assert!(!shard.is_empty(), "shard {i}/{n} is empty");
+            got.extend(shard);
+        }
+        assert_eq!(
+            got.len(),
+            all.len(),
+            "N={n}: a shape is in two shards or in none"
+        );
+        got.sort_unstable();
+        let mut want = all.clone();
+        want.sort_unstable();
+        assert_eq!(got, want, "N={n}: the shards are not the shapes, each once");
+    }
+    assert_eq!(shard_shapes(None), all);
+    // The documented rule: index % N == i - 1.
+    assert_eq!(shard_shapes(Some((1, 4)))[1], all[4]);
+    assert_eq!(shard_shapes(Some((2, 4)))[0], all[1]);
+}
+
+#[test]
+fn a_malformed_shard_is_an_error_not_a_guess() {
+    assert_eq!(parse_shard("1/4"), Ok((1, 4)));
+    assert_eq!(parse_shard("4/4"), Ok((4, 4)));
+    assert_eq!(parse_shard("1/1"), Ok((1, 1)));
+    for bad in [
+        "0/4", "5/4", "x", "1/0", "", "1/", "/4", "1/4/2", "-1/4", " 1/4", "1/4 ", "a/b",
+    ] {
+        let err = parse_shard(bad).expect_err(bad);
+        assert!(
+            err.contains("RUBRICA_LINEAR_SHARD") && err.contains("i/N"),
+            "{bad}: {err}"
+        );
+    }
+}
+
+#[test]
+fn debug_builds_run_each_shape_once_at_the_smallest_size() {
+    assert_eq!(sizes_for(true), [MB / 2]);
+    assert_eq!(sizes_for(false), [MB / 2, MB, 2 * MB]);
 }

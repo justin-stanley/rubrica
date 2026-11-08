@@ -231,12 +231,23 @@ jobs:
           fi
 
   linear-arm64:
-    name: linear-arm64
+    # One check per shard, named "linear-arm64 (1/4)" to "linear-arm64 (4/4)": a required check
+    # lists these four names, not "linear-arm64".
+    name: linear-arm64 (${{ matrix.shard }})
     # The ratio tests of the parser and the renderer on an arm64 runner, natively: no emulation.
     runs-on: ubuntu-24.04-arm
+    strategy:
+      # One shard's failure must not hide another's.
+      fail-fast: false
+      matrix:
+        # The release shape matrices cost most of the job's time; each shard runs the shapes at
+        # index % 4 == i - 1 (tests/linear.rs of rubrica-render and of rubrica-markdown), both
+        # profiles of a shape together.
+        shard: ["1/4", "2/4", "3/4", "4/4"]
     env:
       # As in the linear job: the hosted-runner limits.
       RUBRICA_LINEAR_CI: "1"
+      RUBRICA_LINEAR_SHARD: ${{ matrix.shard }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:

@@ -136,6 +136,40 @@ rm -f "$tmp/badge.json"
 run_ "$fx/malformed.json" "$tmp/floor.toml" --root "$root" --badge "$tmp/badge.json"
 [ ! -e "$tmp/badge.json" ] && echo "test-coverage-summary: no badge on bad input ok" || bad "a badge was written for bad input"
 
+# The Pages site: scripts/coverage-site.sh stages llvm-cov's HTML, the badge and the landing
+# page, strips llvm-cov's own script (control.js) and fails if any script is left.
+site=$PWD/scripts/coverage-site.sh
+html="$tmp/html"
+mkdir -p "$html/coverage/home/runner/crates/rubrica"
+printf '<html><head><script src='"'"'control.js'"'"'></script></head><body>index</body></html>\n' >"$html/index.html"
+printf '<html><head><script src='"'"'../../../control.js'"'"'></script></head><body><span class='"'"'control'"'"'><a href='"'"'javascript:next_line()'"'"'>next line</a>, <a href='"'"'javascript:next_region()'"'"'>next region</a></span>file</body></html>\n' >"$html/coverage/home/runner/crates/rubrica/main.rs.html"
+echo 'function next_uncovered() {}' >"$html/control.js"
+echo 'body{}' >"$html/style.css"
+printf '{"schemaVersion":1,"label":"coverage","message":"84.5%%","color":"green"}\n' >"$tmp/site-badge.json"
+site_() { rc=0; out=$("$site" "$@" 2>&1) || rc=$?; }
+site_ "$html" "$tmp/site-badge.json" "$tmp/out"
+[ "$rc" = 0 ] || bad "site: exit $rc: $out"
+[ -f "$tmp/out/index.html" ] && grep -qF 'href="coverage/"' "$tmp/out/index.html" && echo "test-coverage-summary: site: landing page links to coverage/ ok" || bad "site: no landing page linking to coverage/"
+[ -f "$tmp/out/coverage/index.html" ] && [ -f "$tmp/out/coverage/style.css" ] && echo "test-coverage-summary: site: report staged ok" || bad "site: the report is not under coverage/"
+cmp -s "$tmp/site-badge.json" "$tmp/out/coverage/badge.json" && echo "test-coverage-summary: site: badge staged ok" || bad "site: coverage/badge.json is not the badge"
+[ ! -e "$tmp/out/coverage/control.js" ] && echo "test-coverage-summary: site: control.js removed ok" || bad "site: control.js was published"
+if grep -rqiE '<script|javascript:' "$tmp/out"; then bad "site: a script tag or javascript: link is left"; else echo "test-coverage-summary: site: no script tag or javascript: link ok"; fi
+site_ "$html" "$tmp/site-badge.json" "$tmp/out"
+[ "$rc" = 2 ] && echo "test-coverage-summary: site: refuses an existing output dir ok" || bad "site: existing output dir: exit $rc, want 2"
+# Planted: an inline script, an event handler, a javascript: link. The strip does not hide them.
+for plant in '<script>alert(1)</script>' '<a onclick="x()">y</a>' '<a href="javascript:x()">y</a>'; do
+  rm -rf "$tmp/html2" "$tmp/out2"; cp -R "$html" "$tmp/html2"
+  printf '<html><body>%s</body></html>\n' "$plant" >"$tmp/html2/coverage/planted.html"
+  site_ "$tmp/html2" "$tmp/site-badge.json" "$tmp/out2"
+  if [ "$rc" = 1 ] && [[ $out == *"script"* ]]; then echo "test-coverage-summary: site: refuses $plant ok"; else bad "site: $plant: exit $rc, want 1: $out"; fi
+done
+rm -rf "$tmp/html3" "$tmp/out3"; mkdir "$tmp/html3"
+site_ "$tmp/html3" "$tmp/site-badge.json" "$tmp/out3"
+[ "$rc" = 2 ] && [[ $out == *"no index.html"* ]] && echo "test-coverage-summary: site: refuses a report with no index.html ok" || bad "site: no index.html: exit $rc: $out"
+echo '{"label":"coverage"}' >"$tmp/badge-bad.json"
+site_ "$html" "$tmp/badge-bad.json" "$tmp/out4"
+[ "$rc" = 2 ] && [[ $out == *"badge"* ]] && echo "test-coverage-summary: site: refuses a bad badge ok" || bad "site: bad badge: exit $rc: $out"
+
 # The real floor file names every crate the workspace measures.
 [ -f coverage-floor.toml ] || bad "coverage-floor.toml is missing"
 

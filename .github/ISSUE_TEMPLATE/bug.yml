@@ -1,0 +1,55 @@
+name: Bug report
+description: Rubrica does something other than what it documents.
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. If this could be a security problem (script execution from page
+        content, a sanitizer bypass, a path escape, input that makes a build blow up), do not
+        file it here: use the private report link on the issue chooser, and see SECURITY.md.
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened instead?
+      description: Paste the output or the wrong HTML. Say which command you ran.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: The smallest input that shows it
+      description: A Markdown file, or a small repository. Smaller is better.
+      render: markdown
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The output of `rubrica --version`, or the container image tag.
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How you run it
+      options:
+        - Release binary
+        - Container image
+        - cargo install
+        - Built from source
+        - The WebAssembly search bundle in a browser
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Platform
+      description: Operating system and architecture, for example Linux x86_64 or macOS arm64.

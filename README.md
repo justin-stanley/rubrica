@@ -157,7 +157,10 @@ change. Development uses the toolchain pinned in `rust-toolchain.toml`.
 ## Developing
 
 The gate is `scripts/ci.sh`; it is what CI runs, and it ends with `ci: all green`.
-`rust-toolchain.toml` pins the toolchain. Every commit needs a DCO `Signed-off-by`. Rubrica is
+`rust-toolchain.toml` pins the toolchain. Besides the build and the tests, the gate runs two
+guards of the repository's own (`scripts/crate-paths.sh` for what a crate may read, and
+`tools/public-workflows-check.sh` for the workflows), and CI measures coverage in house with
+`cargo-llvm-cov`, shared with no service. Every commit needs a DCO `Signed-off-by`. Rubrica is
 developed with coding agents under review; [CONTRIBUTING.md](CONTRIBUTING.md) says how that
 works.
 

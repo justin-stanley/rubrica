@@ -1,0 +1,47 @@
+name: Feature request
+description: Propose a change to what Rubrica does. Open this before writing code.
+labels: ["feature", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A feature needs agreement on its shape before it is written (see CONTRIBUTING.md).
+        Describe the problem first; the solution can follow.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: The problem, and what you do today instead.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would you like Rubrica to do?
+      description: The behaviour you propose, and an example of the input and output.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: dropdown
+    id: area
+    attributes:
+      label: Where does it belong?
+      options:
+        - Markdown parser
+        - Renderer (HTML output, sanitizing)
+        - Site build (themes, search, navigation)
+        - Command line
+        - Release and packaging
+        - WebAssembly search
+        - Documentation
+        - Not sure
+  - type: checkboxes
+    id: bounds
+    attributes:
+      label: Rubrica's rules
+      options:
+        - label: It needs no JavaScript on a built page (the generated WebAssembly loader is the one exception).
+        - label: It needs no dependency that compiles C or C++.

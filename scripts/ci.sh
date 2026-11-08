@@ -81,15 +81,12 @@ if rustup toolchain list | grep -q nightly-2026-10-30; then
 else
   echo "ci: no pinned nightly; fuzz targets not built"
 fi
-# No test or crate reads a file outside its own crate: a string literal that climbs out of
-# a crate into a top-level directory is a finding.
-set +e
-grep -rnE '"/?(\.\./)+(fixtures|tools|vendor)(/|")' crates --include='*.rs'
-rc=$?
-set -e
-if [ "$rc" -eq 0 ]; then
-  echo "ci: a crate reaches outside itself"; exit 1
-elif [ "$rc" -ne 1 ]; then
-  echo "ci: the crate-path grep failed ($rc)"; exit 1
-fi
+# No crate reads a file outside itself or one it does not ship, and the guard that says so
+# is itself tested (planted bad cases must fail, each with its exit code and message).
+scripts/test-crate-paths.sh
+scripts/crate-paths.sh
+# The workflows, the release script, the Dockerfile and the files around them keep their
+# shape: actions pinned by SHA, job shapes, the release, wasm, platform and upgrade checks.
+# Needs ruby and actionlint.
+tools/public-workflows-check.sh
 echo "ci: all green"

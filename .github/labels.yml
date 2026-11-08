@@ -1,0 +1,52 @@
+# The label set, as data. Nothing here applies itself: the maintainer syncs it to the
+# repository's labels. Colours are hex without the leading #.
+#
+# type: what kind of change
+- name: bug
+  color: d73a4a
+  description: Something does not work as documented
+- name: feature
+  color: 0e8a16
+  description: A new capability, agreed in an issue first
+- name: docs
+  color: 0075ca
+  description: Documentation only
+- name: chore
+  color: ededed
+  description: Maintenance with no change in behaviour
+# area: where the change lands
+- name: parser
+  color: 5319e7
+  description: rubrica-markdown, the CommonMark and GFM parser
+- name: render
+  color: 7057ff
+  description: rubrica-render, HTML output and the sanitizer
+- name: site
+  color: 1d76db
+  description: rubrica-site, the site build, themes and search
+- name: cli
+  color: 006b75
+  description: The rubrica command line
+- name: ci
+  color: fbca04
+  description: Workflows, the gate and its guards
+- name: release
+  color: c2e0c6
+  description: Tags, packaging, images and publishing
+- name: wasm
+  color: e99695
+  description: The WebAssembly search bundle
+# status: where an issue stands
+- name: needs-triage
+  color: d4c5f9
+  description: Not yet looked at by a maintainer
+- name: good first issue
+  color: 7057ff
+  description: A small, well-bounded change to start with
+- name: help wanted
+  color: 008672
+  description: The maintainer would welcome a contribution
+# dependencies
+- name: dependencies
+  color: 0366d6
+  description: A dependency update (Dependabot applies it)

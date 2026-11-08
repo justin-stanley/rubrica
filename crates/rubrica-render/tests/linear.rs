@@ -25,7 +25,10 @@ fn timed_within(name: &str, md: &str, limit: Duration) -> Rendered {
     let out = render(md, &RenderOptions::default());
     let took = start.elapsed();
     eprintln!("{name}: {} bytes in {took:?} (of {limit:?})", md.len());
-    assert!(took < limit, "{name}: {} bytes took {took:?}", md.len());
+    // A debug or coverage build only runs the shape; the release `linear` job holds the time.
+    if cfg!(not(debug_assertions)) {
+        assert!(took < limit, "{name}: {} bytes took {took:?}", md.len());
+    }
     out
 }
 

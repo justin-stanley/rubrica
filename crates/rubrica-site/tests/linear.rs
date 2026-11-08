@@ -29,10 +29,14 @@ fn timed<T>(limit: Duration, what: &str, f: impl FnOnce() -> T) -> T {
     let out = f();
     let took = t.elapsed();
     eprintln!("linear: {what}: {took:?} (limit {limit:?})");
-    assert!(
-        took < limit,
-        "{what}: {took:?}, over {limit:?}: superlinear?"
-    );
+    // As elsewhere, a debug build (and so an instrumented coverage build) only runs the
+    // shape; the release `linear` job holds the time.
+    if cfg!(not(debug_assertions)) {
+        assert!(
+            took < limit,
+            "{what}: {took:?}, over {limit:?}: superlinear?"
+        );
+    }
     out
 }
 

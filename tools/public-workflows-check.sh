@@ -521,6 +521,24 @@ done
 for k in $chain_keys; do
   printf '%s\n' "$chain_report" | grep -qxF "$k" || bad "the publish chain: $k does not hold"
 done
+# The manifests agree with the chain: each crate it publishes is publishable (cargo metadata
+# reports `publish` as null, not `[]`), and every other workspace crate is not (rubrica-wasm
+# is built into the bundle crate, never published itself).
+pub_report=$(cargo metadata --no-deps --locked --format-version 1 | ruby -rjson -e '
+  chain = %w[rubrica-markdown rubrica-render rubrica-wasm-bundle rubrica-site rubrica]
+  pk = JSON.parse(STDIN.read)["packages"]
+  pk.each do |p|
+    open = p["publish"].nil?
+    if chain.include?(p["name"])
+      puts "manifest-not-publishable #{p["name"]}" unless open
+    else
+      puts "manifest-publishable #{p["name"]}" if open
+    end
+  end
+  (chain - pk.map { |p| p["name"] }).each { |n| puts "manifest-missing #{n}" }
+  puts "manifest-no-wasm" unless pk.any? { |p| p["name"] == "rubrica-wasm" }
+' 2>&1) || bad "cargo metadata or its reader failed: $pub_report"
+[ -z "$pub_report" ] || bad "publish settings differ from the chain: $(printf '%s' "$pub_report" | tr '\n' ';')"
 grep_status -c 'environment: crates-io' "$rel"
 [ "$out" = 5 ] || bad "release.yml has 'environment: crates-io' $out times, want 5 (one per published crate)"
 # The shell script behind the jobs and the CI job exists and is executable.

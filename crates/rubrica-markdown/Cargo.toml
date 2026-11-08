@@ -1,6 +1,6 @@
 [package]
 name = "rubrica-markdown"
-description = "Rubrica's Markdown parser: CommonMark 0.31.2 with GFM tables, strikethrough, task lists, footnotes and extended autolinks. The block and inline parsers derive from pulldown-cmark 0.13.6 (MIT)."
+description = "A CommonMark 0.31.2 and GFM pull parser that yields events with byte ranges, for the Rubrica wiki engine. Block and inline parsers derive from pulldown-cmark 0.13.6 (MIT)."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -8,7 +8,7 @@ license = "AGPL-3.0-only AND MIT"
 publish.workspace = true
 repository.workspace = true
 readme = "README.md"
-keywords = ["markdown", "commonmark", "gfm", "parser"]
+keywords = ["markdown", "commonmark", "gfm", "parser", "pulldown-cmark"]
 categories = ["parser-implementations", "text-processing"]
 
 [dependencies]

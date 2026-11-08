@@ -85,4 +85,8 @@ fi
 # is itself tested (planted bad cases must fail, each with its exit code and message).
 scripts/test-crate-paths.sh
 scripts/crate-paths.sh
+# The workflows, the release script, the Dockerfile and the files around them keep their
+# shape: actions pinned by SHA, job shapes, the release, wasm, platform and upgrade checks.
+# Needs ruby and actionlint.
+tools/public-workflows-check.sh
 echo "ci: all green"

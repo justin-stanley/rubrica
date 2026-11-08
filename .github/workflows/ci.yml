@@ -26,6 +26,10 @@ env:
   # does not see these).
   CARGO_DENY_VERSION: 0.20.2
   CARGO_AUDIT_VERSION: 0.22.2
+  # actionlint, as the release's linux_amd64 tarball; the sha256 is from its checksums
+  # file. Bump both together.
+  ACTIONLINT_VERSION: 1.7.12
+  ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
 
 jobs:
   # The search page's wasm bundle, built once here with the pinned toolchain and the pinned
@@ -83,6 +87,16 @@ jobs:
       # No `toolchain:` input: the action honours rust-toolchain.toml (1.97.0).
       - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
       - uses: Swatinem/rust-cache@c8037a86dde8214a8310e9f54a8fc61ab362aa31 # v2
+      # tools/public-workflows-check.sh (run by the gate) lints the workflows with actionlint.
+      - name: Install actionlint
+        run: |
+          set -euo pipefail
+          url="https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          curl -sSfL "$url" -o /tmp/actionlint.tar.gz
+          echo "${ACTIONLINT_SHA256}  /tmp/actionlint.tar.gz" | sha256sum -c -
+          tar -xzf /tmp/actionlint.tar.gz -C /tmp actionlint
+          install -m 0755 /tmp/actionlint "$RUNNER_TEMP/actionlint"
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
       - name: scripts/ci.sh
         env:
           RUBRICA_CI_SPLIT: "1" # deny and audit run as their own jobs below

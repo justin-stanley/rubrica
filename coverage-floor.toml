@@ -1,0 +1,18 @@
+# Line-coverage floors, one per crate the coverage report measures. Read by
+# scripts/coverage-summary.sh in the `coverage` CI job.
+#
+# A crate fails the job when its lines coverage is more than 0.5 points below its floor, or
+# when it has no floor here; a crate named here but missing from the report fails too. A
+# floor is a percentage with exactly one decimal. Raising one is a one-line change that is
+# reviewed like any other (see CONTRIBUTING.md, Coverage).
+#
+# Each floor started at the crate's lines coverage on main (2026-11-08), rounded down to one
+# decimal, minus 1.0. rubrica-wasm-bundle is published but has no floor: it holds only
+# include_bytes!/include_str! constants, no executable lines, so the report has no row for
+# it. rubrica-wasm is never published but its tests run, so it is held too.
+[floor]
+rubrica = 88.6
+rubrica-markdown = 81.9
+rubrica-render = 89.0
+rubrica-site = 93.6
+rubrica-wasm = 65.4

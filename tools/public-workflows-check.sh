@@ -539,6 +539,17 @@ pub_report=$(cargo metadata --no-deps --locked --format-version 1 | ruby -rjson 
   puts "manifest-no-wasm" unless pk.any? { |p| p["name"] == "rubrica-wasm" }
 ' 2>&1) || bad "cargo metadata or its reader failed: $pub_report"
 [ -z "$pub_report" ] || bad "publish settings differ from the chain: $(printf '%s' "$pub_report" | tr '\n' ';')"
+# A candidate tag is the workspace version with a suffix (`v0.1.0-rc.1` needs `0.1.0-rc.1` in
+# Cargo.toml, the check job's rule), and cargo refuses a path dependency whose requirement
+# does not admit that version (`^0.1` does not match `0.1.0-rc.1`). So each sibling's
+# requirement in [workspace.dependencies] starts at `X.Y.Z-0`, the lowest prerelease of the
+# release being prepared.
+base=$(sed -n 's/^version = "\([0-9]*\.[0-9]*\.[0-9]*\)\(-.*\)\{0,1\}"$/\1/p' Cargo.toml | head -1)
+[ -n "$base" ] || bad "Cargo.toml: no workspace version"
+for k in rubrica-markdown rubrica-render rubrica-site rubrica-wasm-bundle; do
+  grep_status -cE "^$k = \{ path = \"crates/$k\", version = \">=$base-0, <[0-9]+\.[0-9]+\.[0-9]+\"" Cargo.toml
+  [ "$out" = 1 ] || bad "Cargo.toml: $k's requirement does not start at $base-0, so a candidate tag (v$base-rc.N) cannot resolve it"
+done
 grep_status -c 'environment: crates-io' "$rel"
 [ "$out" = 5 ] || bad "release.yml has 'environment: crates-io' $out times, want 5 (one per published crate)"
 # The shell script behind the jobs and the CI job exists and is executable.

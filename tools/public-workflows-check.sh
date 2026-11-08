@@ -609,6 +609,51 @@ fi
 grep_status -rniE 'codecov|coveralls|codacy|sonarcloud' "$wf"
 [ "$rc" -eq 1 ] || bad "a workflow names a coverage service: $out"
 
+# 12j. The contribution files under .github/: issue forms (bug, feature) and a config that
+# turns blank issues off and points security reports at private vulnerability reporting;
+# CODEOWNERS; the label set (data only, applied by the maintainer); a pull request template
+# that names the gate and the sign-off. The Ruby text is matched literally.
+# shellcheck disable=SC2016
+for f in CODEOWNERS labels.yml ISSUE_TEMPLATE/bug.yml ISSUE_TEMPLATE/feature.yml ISSUE_TEMPLATE/config.yml; do
+  [ -f "$gh_dir/$f" ] || bad "$gh_dir/$f is missing"
+done
+if [ -f "$gh_dir/ISSUE_TEMPLATE/config.yml" ] && [ -f "$gh_dir/labels.yml" ] \
+  && [ -f "$gh_dir/ISSUE_TEMPLATE/bug.yml" ] && [ -f "$gh_dir/ISSUE_TEMPLATE/feature.yml" ]; then
+  contrib_report=$(ruby -ryaml -e '
+    dir = ARGV[0]
+    c = YAML.load_file("#{dir}/ISSUE_TEMPLATE/config.yml")
+    puts "blank-issues-off" if c["blank_issues_enabled"] == false
+    links = c["contact_links"] || []
+    puts "security-link" if links.any? { |l| l["url"] == "https://github.com/justin-stanley/rubrica/security/advisories/new" }
+    puts "question-link" if links.size >= 2 && links.all? { |l| l["name"] && l["url"] && l["about"] }
+    %w[bug feature].each do |f|
+      d = YAML.load_file("#{dir}/ISSUE_TEMPLATE/#{f}.yml")
+      ok = d["name"] && d["description"] && d["body"].is_a?(Array) && d["body"].any? { |b| b["type"] == "textarea" && (b["validations"] || {})["required"] }
+      puts "#{f}-form" if ok
+      puts "#{f}-labelled" if Array(d["labels"]).any?
+    end
+    l = YAML.load_file("#{dir}/labels.yml")
+    names = l.map { |x| x["name"] }
+    puts "labels-valid" if l.all? { |x| x["name"] && x["color"].to_s =~ /\A[0-9a-f]{6}\z/ && x["description"].to_s.size.between?(1, 100) }
+    puts "labels-unique" if names.uniq.size == names.size
+    want = %w[bug feature docs chore parser render site cli ci release wasm needs-triage] + ["good first issue", "help wanted", "dependencies"]
+    puts "labels-set" if (want - names).empty?
+    puts "forms-use-known-labels" if %w[bug feature].all? { |f| Array(YAML.load_file("#{dir}/ISSUE_TEMPLATE/#{f}.yml")["labels"]).all? { |x| names.include?(x) } }
+  ' "$gh_dir" 2>&1) || bad "the contribution files check failed: $contrib_report"
+  for k in blank-issues-off security-link question-link bug-form feature-form bug-labelled feature-labelled \
+    labels-valid labels-unique labels-set forms-use-known-labels; do
+    printf '%s\n' "$contrib_report" | grep -qxF "$k" || bad "the contribution files: $k does not hold"
+  done
+fi
+if [ -f "$gh_dir/CODEOWNERS" ]; then
+  grep_status -nxF '* @justin-stanley' "$gh_dir/CODEOWNERS"
+  [ "$rc" -eq 0 ] || bad ".github/CODEOWNERS has no '* @justin-stanley' line"
+fi
+for w in 'scripts/ci.sh' 'Signed-off-by\|git commit -s' 'CHANGELOG.md'; do
+  grep_status -c "$w" "$gh_dir/PULL_REQUEST_TEMPLATE.md"
+  [ "$out" -ge 1 ] || bad "PULL_REQUEST_TEMPLATE.md does not mention $w"
+done
+
 # 13. The Dockerfile's base image is pinned by digest, and it runs as a non-root user.
 [ -f Dockerfile ] || { bad "Dockerfile is missing"; exit 1; }
 first=$(head -1 Dockerfile)

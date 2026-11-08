@@ -17,6 +17,7 @@ edition = "2021"
 rust-version = "1.94"
 license = "AGPL-3.0-only"
 repository = "https://github.com/justin-stanley/rubrica"
+homepage = "https://github.com/justin-stanley/rubrica"
 
 # Every shared version is pinned here once; crates say `x.workspace = true`.
 [workspace.dependencies]

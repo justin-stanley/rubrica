@@ -93,7 +93,7 @@ done
 
 # 5. The job-level names of ci.yml.
 names=$(ruby -ryaml -e 'd = YAML.load_file(ARGV[0]); p d["jobs"].values.map { |j| j["name"] }.sort' "$wf/ci.yml")
-want_names='["MSRV", "Rust", "Secret scan", "cargo audit", "cargo deny", "coverage", "linear", "linear-arm64 (${{ matrix.shard }})", "no-js", "package", "spec", "wasm"]'
+want_names='["MSRV", "Rust", "Secret scan", "cargo audit", "cargo deny", "coverage", "coverage-pages", "linear", "linear-arm64 (${{ matrix.shard }})", "no-js", "package", "spec", "wasm"]'
 [ "$names" = "$want_names" ] || bad "ci.yml job names are $names, want $want_names"
 
 # 6. YAML parses.
@@ -641,12 +641,16 @@ for k in upgrade-in-check upgrade-after-build upgrade-version upgrade-token upgr
 done
 [ -x tools/upgrade-check.sh ] || bad "tools/upgrade-check.sh is missing or not executable"
 # 12i. The coverage job. Coverage is measured in house: `cargo llvm-cov` over the workspace,
-# the summary table written to the job summary, the HTML report kept as an artifact. No
-# third-party service sees it: no uploader action, no token, no badge. The tool is installed
-# at an exact version with --locked, every action is SHA-pinned (check 2), and the job needs
-# the wasm bundle like every job that builds rubrica-site. coverage_findings FILE prints one
-# key per property that holds; the planted variants below must each lose the key they break,
-# so the check cannot pass on a job that does not have the shape.
+# its JSON turned into the job summary by scripts/coverage-summary.sh, which also holds each
+# crate to its floor in coverage-floor.toml (the step fails the job), the HTML report kept as
+# an artifact. On a push to main only, the report is staged as a script-free site
+# (scripts/coverage-site.sh) and published to GitHub Pages by the `coverage-pages` job, which
+# alone holds `pages: write` and `id-token: write`. No third-party service sees any of it: no
+# uploader action, no token. The tool is installed at an exact version with --locked, every
+# action is SHA-pinned (check 2), and the job needs the wasm bundle like every job that builds
+# rubrica-site. coverage_findings FILE prints one key per property that holds; the planted
+# variants below must each lose the key they break, so the check cannot pass on a job that
+# does not have the shape.
 # The Ruby text is matched literally, so single quotes are intended.
 # shellcheck disable=SC2016
 coverage_findings() {
@@ -667,15 +671,25 @@ coverage_findings() {
     puts "workspace-run" if run
     puts "install-before-run" if install && run && install < run
     puts "component" if text.include?("rustup component add llvm-tools-preview")
-    puts "summary" if runs.any? { |r| r.include?("cargo llvm-cov report") && r.include?("GITHUB_STEP_SUMMARY") }
+    push_main = "github.event_name == '"'"'push'"'"' && github.ref == '"'"'refs/heads/main'"'"'"
+    puts "summary-json" if runs.any? { |r| r.include?("cargo llvm-cov report --json --summary-only") }
+    sum = steps.find { |s| s["run"].to_s.include?("scripts/coverage-summary.sh") && s["run"].to_s.include?("GITHUB_STEP_SUMMARY") }
+    puts "summary-script" if sum
+    puts "floor-check" if sum && sum["run"].include?("coverage-floor.toml") && !sum.key?("if") && !sum.key?("continue-on-error") && sum["run"] !~ /\|\|\s*(true|:)/
+    puts "badge" if sum && sum["run"].include?("--badge")
+    stage = steps.find { |s| s["run"].to_s.include?("scripts/coverage-site.sh") }
+    puts "summary-before-stage" if sum && stage && steps.index(sum) < steps.index(stage)
+    puts "site-staged-on-main-push" if stage && stage["if"].to_s.strip == push_main
+    pa = steps.find { |s| s["uses"].to_s.start_with?("actions/upload-pages-artifact@") }
+    puts "pages-artifact" if pa && pa["uses"] =~ /\Aactions\/upload-pages-artifact@[0-9a-f]{40}\z/ && pa["if"].to_s.strip == push_main && pa["with"]["path"].to_s != ""
     up = steps.find { |s| s["uses"].to_s.start_with?("actions/upload-artifact@") && s["with"]["name"] == "coverage-html" }
     puts "html-artifact" if up && up["with"]["path"].to_s.include?("target/llvm-cov/html") && up["with"]["if-no-files-found"] == "error"
-    allowed = %w[actions/checkout actions/download-artifact actions/upload-artifact dtolnay/rust-toolchain Swatinem/rust-cache]
+    allowed = %w[actions/checkout actions/download-artifact actions/upload-artifact actions/upload-pages-artifact dtolnay/rust-toolchain Swatinem/rust-cache]
     puts "only-first-party-actions" if (uses - allowed).empty?
     puts "no-uploader" unless j.to_s =~ /codecov|coveralls|codacy|sonar|CODECOV|COVERALLS|secrets\.|token/i
   ' "$1"
 }
-coverage_keys="named needs-wasm downloads-bundle pinned-install workspace-run install-before-run component summary html-artifact only-first-party-actions no-uploader"
+coverage_keys="named needs-wasm downloads-bundle pinned-install workspace-run install-before-run component summary-json summary-script floor-check badge summary-before-stage site-staged-on-main-push pages-artifact html-artifact only-first-party-actions no-uploader"
 cov_report=$(coverage_findings "$wf/ci.yml" 2>&1) || bad "the coverage check failed: $cov_report"
 for k in $coverage_keys; do
   printf '%s\n' "$cov_report" | grep -qxF "$k" || bad "ci.yml coverage: $k does not hold"
@@ -694,11 +708,106 @@ if printf '%s\n' "$cov_report" | grep -qxF named; then
   cov_variant "an uploader" only-first-party-actions 's#actions/upload-artifact@\([0-9a-f]*\) \# v7.0.2#codecov/codecov-action@\1 \# v5#'
   # shellcheck disable=SC2016
   cov_variant "a token" no-uploader 's#cargo llvm-cov report --html#cargo llvm-cov report --html; curl -F t=$CODECOV_TOKEN x#'
-  cov_variant "no job summary" summary 's/GITHUB_STEP_SUMMARY/SOME_FILE/'
+  cov_variant "no job summary" summary-script 's/GITHUB_STEP_SUMMARY/SOME_FILE/'
+  cov_variant "the summary script not run" summary-script 's#scripts/coverage-summary.sh#scripts/other.sh#'
+  cov_variant "no floor file" floor-check 's#coverage-floor.toml#other.toml#'
+  cov_variant "a floor check that cannot fail" floor-check 's#--badge \([^ ]*\) >> "$GITHUB_STEP_SUMMARY"#--badge \1 >> "$GITHUB_STEP_SUMMARY" || true#'
+  cov_variant "a site staged on pull requests" site-staged-on-main-push "s#if: github.event_name == 'push' && github.ref == 'refs/heads/main'#if: github.event_name == 'pull_request'#"
   cov_variant "no workspace" workspace-run 's/cargo llvm-cov --workspace/cargo llvm-cov/'
 fi
 grep_status -rniE 'codecov|coveralls|codacy|sonarcloud' "$wf"
 [ "$rc" -eq 1 ] || bad "a workflow names a coverage service: $out"
+
+# 12i-2. The Pages deploy. It is a job of its own, `coverage-pages`, that needs `coverage`, runs
+# on a push to main only, in the github-pages environment, with `pages: write` and
+# `id-token: write` and nothing else, and has one step: the pinned official deploy action.
+# The workflow's own permissions stay `contents: read`, and no other job holds either write.
+# pages_findings FILE prints one key per property that holds; the planted variants below
+# (a deploy on pull_request, `pages: write` at workflow level, an unpinned deploy action ...)
+# must each lose the key they break.
+# The Ruby text is matched literally, so single quotes are intended.
+# shellcheck disable=SC2016
+pages_findings() {
+  ruby -ryaml -e '
+    d = YAML.load_file(ARGV[0])
+    jobs = d["jobs"] || {}
+    push_main = "github.event_name == '"'"'push'"'"' && github.ref == '"'"'refs/heads/main'"'"'"
+    puts "workflow-read-only" if d["permissions"] == { "contents" => "read" }
+    writes = lambda { |p| p.is_a?(String) ? p.include?("write") : (p.is_a?(Hash) && (p["pages"] == "write" || p["id-token"] == "write")) }
+    puts "no-other-pages-write" if jobs.reject { |k, _| k == "coverage-pages" }.values.none? { |j| writes.call(j["permissions"]) }
+    j = jobs["coverage-pages"]
+    exit 0 unless j
+    steps = j["steps"] || []
+    puts "named" if j["name"] == "coverage-pages"
+    puts "needs-coverage" if Array(j["needs"]) == ["coverage"]
+    puts "push-main-only" if j["if"].to_s.strip == push_main
+    env = j["environment"]
+    puts "environment" if (env.is_a?(Hash) ? env["name"] : env) == "github-pages"
+    puts "permissions-minimal" if j["permissions"] == { "pages" => "write", "id-token" => "write" }
+    puts "deploy-pinned" if steps.size == 1 && steps[0]["uses"].to_s =~ /\Aactions\/deploy-pages@[0-9a-f]{40}\z/
+    puts "no-run-steps" if steps.none? { |s| s.key?("run") }
+  ' "$1"
+}
+pages_keys="workflow-read-only no-other-pages-write named needs-coverage push-main-only environment permissions-minimal deploy-pinned no-run-steps"
+pages_report=$(pages_findings "$wf/ci.yml" 2>&1) || bad "the pages check failed: $pages_report"
+for k in $pages_keys; do
+  printf '%s\n' "$pages_report" | grep -qxF "$k" || bad "ci.yml coverage-pages: $k does not hold"
+done
+# pages_variant NAME KEY REGEX REPLACEMENT: ci.yml with every match of REGEX replaced loses KEY.
+pages_variant() {
+  local name=$1 key=$2 got
+  ruby -e 'print File.read(ARGV[0]).gsub(Regexp.new(ARGV[1]), ARGV[2])' "$wf/ci.yml" "$3" "$4" > "$notes_tmp/pg.yml"
+  if cmp -s "$wf/ci.yml" "$notes_tmp/pg.yml"; then bad "pages variant ($name): the edit changed nothing"; return; fi
+  got=$(pages_findings "$notes_tmp/pg.yml" 2>&1) || { bad "pages variant ($name): $got"; return; }
+  if printf '%s\n' "$got" | grep -qxF "$key"; then bad "pages variant ($name): still reports $key"; fi
+}
+if printf '%s\n' "$pages_report" | grep -qxF named; then
+  pages_variant "a deploy on pull_request" push-main-only "event_name == 'push'" "event_name == 'pull_request'"
+  pages_variant "a deploy on every event" push-main-only "(?m)^    if: github.event_name == 'push' && github.ref == 'refs/heads/main'\n    runs-on" "    runs-on"
+  pages_variant "a deploy from any branch" push-main-only " && github.ref == 'refs/heads/main'" ""
+  pages_variant "pages: write at workflow level" workflow-read-only "(?m)\\A(.*?\n)permissions:\n  contents: read\n" $'\\1permissions:\n  contents: read\n  pages: write\n'
+  pages_variant "id-token: write at workflow level" workflow-read-only "(?m)\\A(.*?\n)permissions:\n  contents: read\n" $'\\1permissions:\n  contents: read\n  id-token: write\n'
+  pages_variant "an unpinned deploy action" deploy-pinned "actions/deploy-pages@[0-9a-f]{40} # v[0-9.]+" "actions/deploy-pages@v5"
+  pages_variant "a deploy action on a branch" deploy-pinned "actions/deploy-pages@[0-9a-f]{40} # v[0-9.]+" "actions/deploy-pages@main"
+  pages_variant "contents: write on the deploy" permissions-minimal "(?m)^      pages: write\n" $'      pages: write\n      contents: write\n'
+  pages_variant "no environment" environment "(?m)^    environment:\n      name: github-pages\n(      url: .*\n)?" ""
+  pages_variant "not waiting for coverage" needs-coverage "(?m)^    needs: coverage\n    if: github.event_name" "    if: github.event_name"
+  pages_variant "a script step in the deploy" no-run-steps "(?m)^(      - id: deployment\n)" $'      - run: echo hi\n\\1'
+  pages_variant "pages write on another job" no-other-pages-write "(?m)^  linear:\n" $'  linear:\n    permissions:\n      pages: write\n'
+fi
+
+# 12i-3. No third-party coverage service anywhere in what the repository ships or runs: not
+# in the workflows, the pages files, the coverage scripts and floors, the README or the
+# contributor docs. (The README's badge is rendered by shields.io from a file on our own
+# Pages site; that service is told nothing.) coverage_service_scan DIR_OR_FILE... prints the
+# hits; the planted file must be found.
+coverage_service_scan() {
+  set +e
+  grep -rniE 'codecov|coveralls|codacy|sonarcloud|sonarqube|code-?climate|deepsource|CODECOV_TOKEN|COVERALLS_REPO_TOKEN' "$@"
+  local rc=$?
+  set -e
+  return $rc
+}
+mkdir -p "$notes_tmp/svc"
+printf 'steps:\n  - uses: codecov/codecov-action@v5\n' > "$notes_tmp/svc/ci.yml"
+coverage_service_scan "$notes_tmp/svc" >/dev/null && : || bad "the coverage service scan did not find a planted codecov action"
+printf 'env:\n  COVERALLS_REPO_TOKEN: x\n' > "$notes_tmp/svc/ci.yml"
+coverage_service_scan "$notes_tmp/svc" >/dev/null && : || bad "the coverage service scan did not find a planted coveralls token"
+rm -rf "$notes_tmp/svc"
+svc_paths="$gh_dir README.md CONTRIBUTING.md coverage-floor.toml scripts/coverage-summary.sh scripts/coverage-site.sh scripts/test-coverage-summary.sh scripts/fixtures/coverage"
+for f in $svc_paths; do [ -e "$f" ] || bad "$f is missing"; done
+if [ "$fail" -eq 0 ]; then
+  # shellcheck disable=SC2086
+  svc_hits=$(coverage_service_scan $svc_paths) && bad "a third-party coverage service is named: $svc_hits"
+fi
+grep_status -nF 'https://img.shields.io/endpoint?url=https://justin-stanley.github.io/rubrica/coverage/badge.json' README.md
+[ "$rc" -eq 0 ] || bad "README.md has no coverage badge from the Pages badge.json"
+grep_status -nF '](https://justin-stanley.github.io/rubrica/coverage/)' README.md
+[ "$rc" -eq 0 ] || bad "README.md's coverage badge does not link to the report"
+for w in coverage-floor.toml brightgreen 'github.io/rubrica/coverage'; do
+  grep_status -cF "$w" CONTRIBUTING.md
+  [ "$out" -ge 1 ] || bad "CONTRIBUTING.md's coverage section does not mention $w"
+done
 
 # 12j. The contribution files under .github/: issue forms (bug, feature) and a config that
 # turns blank issues off and points security reports at private vulnerability reporting;

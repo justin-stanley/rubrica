@@ -1,0 +1,14 @@
+{
+  "cargo_llvm_cov": {
+    "version": "0.9.1",
+    "manifest_path": "/work/repo/Cargo.toml"
+  },
+  "data": [
+    {
+      "files": [
+        {
+          "filename": "/work/repo/crates/rubrica/src/main.rs",
+          "summary": {
+            "lines": {
+              "count": 200,
+              "cover

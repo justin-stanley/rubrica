@@ -316,6 +316,12 @@ pub fn render(body: &str, opts: &RenderOptions) -> Rendered {
 /// first in [`Rendered::findings`]; every other finding's line is the
 /// body's), and one left open there that runs on into the body takes the
 /// body's marker with it.
+///
+/// # Errors
+///
+/// The [`FrontMatterError`](crate::frontmatter::FrontMatterError) of
+/// [`split_front_matter`](crate::split_front_matter): the file has no front matter, the
+/// block is not terminated, or its YAML is refused.
 pub fn render_page(
     src: &str,
     opts: &RenderOptions,

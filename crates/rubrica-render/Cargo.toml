@@ -1,6 +1,6 @@
 [package]
 name = "rubrica-render"
-description = "The compatibility core: Markdown in, Wiki.js-identical headings, anchors and links out."
+description = "Markdown to sanitized HTML for the Rubrica wiki engine: CommonMark and GFM, front matter, heading ids, @sec markers, and a Wiki.js 2 compatibility profile."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -8,7 +8,7 @@ license.workspace = true
 publish.workspace = true
 repository.workspace = true
 readme = "README.md"
-keywords = ["markdown", "wiki", "slug", "html"]
+keywords = ["markdown", "html", "sanitizer", "wiki", "commonmark"]
 categories = ["text-processing", "web-programming"]
 
 [dependencies]

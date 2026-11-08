@@ -4,6 +4,7 @@ Cargo.toml
 Cargo.toml.orig
 PACKAGE-FILES
 README.md
+examples/render.rs
 src/adapt/footnotes.rs
 src/adapt/headings.rs
 src/adapt/mod.rs

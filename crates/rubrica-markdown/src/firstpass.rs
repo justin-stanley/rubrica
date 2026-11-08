@@ -59,7 +59,7 @@ pub(crate) fn run_first_pass(text: &str, options: Options) -> (Tree<Item>, Alloc
         lookup_table,
         brace_context_next: 0,
         brace_context_stack: Vec::new(),
-        probing_header_refdef: Cell::new(false),
+        refdef_depth: Cell::new(0),
     };
     first_pass.run()
 }
@@ -87,10 +87,11 @@ struct FirstPass<'a, 'b> {
     /// Math environment brace nesting.
     brace_context_stack: Vec<u8>,
     brace_context_next: usize,
-    /// Rubrica: set while `header_starts_another_block` scans a header candidate as a link
-    /// reference definition, so the interrupt checks of that scan's own lines do not start
-    /// another one.
-    probing_header_refdef: Cell<bool>,
+    /// Rubrica: how many `parse_refdef_total` calls are running. `header_starts_another_block`
+    /// scans a header candidate as a link reference definition only from inside at most one,
+    /// so the nesting is two levels whether the definition is parsed at the start of a block
+    /// or probed from a paragraph, and both give the same answer.
+    refdef_depth: Cell<u8>,
 }
 
 impl<'a, 'b> FirstPass<'a, 'b> {
@@ -1830,6 +1831,16 @@ impl<'a, 'b> FirstPass<'a, 'b> {
 
     /// Returns number of bytes scanned, label and definition on success.
     fn parse_refdef_total(&self, start: usize) -> Option<(usize, LinkLabel<'a>, LinkDef<'a>)> {
+        self.refdef_depth.set(self.refdef_depth.get() + 1);
+        let parsed = self.parse_refdef_total_inner(start);
+        self.refdef_depth.set(self.refdef_depth.get() - 1);
+        parsed
+    }
+
+    fn parse_refdef_total_inner(
+        &self,
+        start: usize,
+    ) -> Option<(usize, LinkLabel<'a>, LinkDef<'a>)> {
         let bytes = &self.text.as_bytes()[start..];
         if bytes.get(0) != Some(&b'[') {
             return None;
@@ -2157,17 +2168,17 @@ impl<'a, 'b> FirstPass<'a, 'b> {
         {
             return true;
         }
-        // The definition's own lines are checked for interrupts, which come back here; one
-        // level is enough, since a header candidate on such a line ends that scan anyway.
-        if bytes.first() != Some(&b'[') || self.probing_header_refdef.get() {
+        // The definition's own lines are checked for interrupts, which come back here. The
+        // definition parsed at the start of a block (depth 0 here) checks a candidate on
+        // its destination line with one nested scan, which treats a candidate on its own
+        // lines as ending it. A probe from a paragraph must give that same answer, so it
+        // allows the same two levels: a definition is scanned from depth 0 or 1, never
+        // from 2. Bounded nesting keeps the scan linear.
+        if bytes.first() != Some(&b'[') || self.refdef_depth.get() >= 2 {
             return false;
         }
-        self.probing_header_refdef.set(true);
-        let refdef = self
-            .parse_refdef_total(self.text.len() - text.len())
-            .is_some();
-        self.probing_header_refdef.set(false);
-        refdef
+        self.parse_refdef_total(self.text.len() - text.len())
+            .is_some()
     }
 
     /// Extracts and parses a heading attribute block if exists.

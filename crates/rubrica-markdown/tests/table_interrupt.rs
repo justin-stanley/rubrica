@@ -282,3 +282,26 @@ fn a_header_candidate_ending_in_a_hard_break_does_not_cut_the_paragraph() {
     assert_eq!(ranges(src), want);
     assert_eq!(ranges(src), upstream_ranges(src));
 }
+
+/// The header candidate `[` begins a definition whose destination line is itself a header
+/// candidate that begins a definition (`[\n-|\n]: \n[\n-|\n]: x`). Whether a table opens
+/// must come out the same when the paragraph is scanned for the candidate and when the
+/// definition is parsed at the start of a block: a definition at the start of a block
+/// means no table opens, so the paragraph continues through every line, as upstream
+/// parses it. Before, the scan stopped one level short, cut the paragraph at the first
+/// `[` and let the definition start there (fuzz `autolinks` and `differential`, minimized).
+#[test]
+fn a_candidate_whose_definition_ends_at_another_candidate_does_not_cut_the_paragraph() {
+    let src = "_\n[\n-|\n]: \n[\n-|\n]: x\n";
+    let text = |s: &str| -> String {
+        parse(s, GFM)
+            .filter_map(|e| match e {
+                Event::Text(t) => Some(t.to_string()),
+                _ => None,
+            })
+            .collect()
+    };
+    assert_eq!(text(src), "_[-|]:[-|]: x");
+    assert_eq!(shape(src), "<p>_/[/-|/]:/[/-|/]: x</p>");
+    assert_eq!(ranges(src), upstream_ranges(src));
+}

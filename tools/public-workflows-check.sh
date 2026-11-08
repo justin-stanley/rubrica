@@ -601,7 +601,8 @@ if printf '%s\n' "$cov_report" | grep -qxF named; then
   cov_variant "an unpinned tool" pinned-install 's/cargo install cargo-llvm-cov@[0-9.]* /cargo install cargo-llvm-cov /'
   cov_variant "an unlocked tool" pinned-install 's/cargo install cargo-llvm-cov@\([0-9.]*\) --locked/cargo install cargo-llvm-cov@\1/'
   cov_variant "an uploader" only-first-party-actions 's#actions/upload-artifact@\([0-9a-f]*\) \# v7.0.2#codecov/codecov-action@\1 \# v5#'
-  cov_variant "a token" no-uploader 's/^  CARGO_TERM_COLOR: always/  CARGO_TERM_COLOR: always\n  CODECOV_TOKEN: x/'
+  # shellcheck disable=SC2016
+  cov_variant "a token" no-uploader 's#cargo llvm-cov report --html#cargo llvm-cov report --html; curl -F t=$CODECOV_TOKEN x#'
   cov_variant "no job summary" summary 's/GITHUB_STEP_SUMMARY/SOME_FILE/'
   cov_variant "no workspace" workspace-run 's/cargo llvm-cov --workspace/cargo llvm-cov/'
 fi

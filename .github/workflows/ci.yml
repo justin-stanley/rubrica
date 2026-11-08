@@ -149,6 +149,53 @@ jobs:
       - name: CommonMark and GFM spec examples
         run: cargo test --locked -p rubrica-markdown --test spec
 
+  # Coverage, measured in house. cargo-llvm-cov runs the workspace's tests with instrumented
+  # builds; the summary table goes to this run's summary page and the HTML report is kept as an
+  # artifact. Nothing leaves GitHub: no coverage service, no upload, no credential, no badge.
+  # It is a report, not a required check. The tool's version is bumped deliberately.
+  coverage:
+    name: coverage
+    needs: wasm
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      # The wasm job's bundle: rubrica-site embeds it by default, and it is never committed.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: wasm-bundle
+          path: crates/rubrica-wasm-bundle/src
+      # No `toolchain:` input: the action honours rust-toolchain.toml (1.97.0). The component
+      # is added to that toolchain, the one cargo runs here.
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
+      - uses: Swatinem/rust-cache@c8037a86dde8214a8310e9f54a8fc61ab362aa31 # v2
+      - name: llvm-tools and cargo-llvm-cov, pinned
+        run: |
+          set -euo pipefail
+          rustup component add llvm-tools-preview
+          cargo install cargo-llvm-cov@0.9.1 --locked
+      - name: Run the workspace's tests, instrumented
+        run: cargo llvm-cov --workspace --all-features --locked --no-report
+      - name: Write the summary table
+        run: |
+          set -euo pipefail
+          {
+            echo '### Coverage'
+            echo
+            echo '```text'
+            cargo llvm-cov report
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Build the HTML report
+        run: cargo llvm-cov report --html
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: coverage-html
+          path: target/llvm-cov/html
+          if-no-files-found: error
+          retention-days: 14
+
   linear:
     name: linear
     needs: wasm

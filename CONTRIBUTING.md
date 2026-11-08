@@ -157,8 +157,9 @@ git tag -s vX.Y.Z -m "Rubrica X.Y.Z"
 The release workflow's first job runs `scripts/verify-release-tag.sh` on the pushed tag and
 refuses any other: a lightweight tag, an unsigned tag, a tag signed with a key that is not
 listed, or a listed key under another e-mail. No build job runs after a refusal.
-The signers file holds the placeholder `OWNER-SIGNING-KEY-PENDING` until the owner's key is
-listed in it; until then every tag is refused, and no release can be made.
+The signers file lists the maintainer's release key (an SSH Ed25519 key used only to sign
+Rubrica's release tags). A new or replacement key is added to `.github/allowed_signers` in a
+reviewed pull request, before the first tag it signs.
 
 ## Licensing
 

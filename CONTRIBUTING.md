@@ -36,7 +36,7 @@ CI runs on every pull request, forks included, and all of these must pass before
 | `Rust` | `scripts/ci.sh`, the gate below |
 | `MSRV` | build and tests on the minimum supported Rust version |
 | `spec` | the CommonMark and GFM spec examples |
-| `linear`, `linear-arm64` | the parser, renderer and site build stay linear in their input, on x86_64 and arm64 |
+| `linear`, `linear-arm64 (1/4)`, `linear-arm64 (2/4)`, `linear-arm64 (3/4)`, `linear-arm64 (4/4)` | the parser, renderer and site build stay linear in their input, on x86_64 and arm64 (the arm64 job runs the shape matrices in four shards, `RUBRICA_LINEAR_SHARD=i/N`; unset runs them all) |
 | `no-js` | no JavaScript in the repository or in a built site |
 | `package` | every crate packs to its `PACKAGE-FILES` and builds on its own |
 | `wasm` | the search page's WebAssembly bundle builds, reproducibly, within its size budget |

@@ -344,6 +344,8 @@ jobs:
           else
             echo "::notice::crates/rubrica-markdown does not exist yet; its linear test skipped"
           fi
+      - name: Diagram time is linear
+        run: cargo test --locked -p rubrica-diagram --test linear --release
 
   linear-arm64:
     # One check per shard, named "linear-arm64 (1/4)" to "linear-arm64 (4/4)": a required check
@@ -374,6 +376,7 @@ jobs:
           set -euo pipefail
           cargo test --locked -p rubrica-render --test linear --release
           cargo test --locked -p rubrica-markdown --test linear --release
+          cargo test --locked -p rubrica-diagram --test linear --release
 
   no-js:
     name: no-js
@@ -421,6 +424,7 @@ jobs:
           set -euo pipefail
           scripts/package-check.sh --patch-siblings rubrica-markdown
           scripts/package-check.sh --patch-siblings rubrica-render
+          scripts/package-check.sh --patch-siblings rubrica-diagram
           scripts/package-check.sh --patch-siblings rubrica-wasm-bundle
           scripts/package-check.sh --patch-siblings rubrica-site
           scripts/package-check.sh --patch-siblings rubrica
@@ -462,6 +466,7 @@ jobs:
           cargo semver-checks check-release -p rubrica-render
           cargo semver-checks check-release -p rubrica-site
           cargo semver-checks check-release -p rubrica-wasm-bundle
+          # rubrica-diagram joins after its first release: there is nothing to compare it with yet.
 
   cargo-deny:
     name: cargo deny

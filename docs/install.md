@@ -81,7 +81,7 @@ cargo install rubrica --locked
 
 Available from 0.1.0. The repository pins its toolchain in `rust-toolchain.toml`.
 
-The release workflow publishes the workspace's crates (`rubrica-markdown`, `rubrica-render`,
+The release workflow publishes the workspace's crates (`rubrica-markdown`, `rubrica-render`, `rubrica-diagram`,
 `rubrica-wasm-bundle`, `rubrica-site` and `rubrica`) in that order, each after the owner
 approves it, and a crate already published at a version is skipped, so a failed run is run
 again. Release candidates (`vX.Y.Z-rc.N`) are never published to crates.io. The

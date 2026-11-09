@@ -209,6 +209,12 @@ owner does this once:
    `FIRST_PUBLISH_*` variables. Without them a later release publishes with Trusted
    Publishing; with the variables left set it would try the deleted token and fail.
 
+`rubrica-diagram` is the next first publish. It was added to the chain after 0.1.0, so it has no
+Trusted Publishing configuration yet: when its first release is tagged, repeat steps 1 to 6 for
+that one crate (a `publish-new` token restricted to `rubrica-diagram`, the secret
+`CRATES_IO_PUBLISH_NEW`, the variable `FIRST_PUBLISH_RUBRICA_DIAGRAM` set to `true`, then its
+Trusted Publishing configuration and the clean-up).
+
 A candidate tag needs the workspace version to carry the suffix (`0.1.0-rc.1`), and the
 sibling requirements in the root `Cargo.toml` start at `X.Y.Z-0` so that they admit it.
 `tools/public-workflows-check.sh` pins both.

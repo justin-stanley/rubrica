@@ -17,7 +17,7 @@ name: Release
 #   x86_64-unknown-linux-musl and aarch64-unknown-linux-musl binaries (ubuntu-latest and
 #   ubuntu-24.04-arm), built reproducibly (the checkout and the cargo home are remapped out of
 #   them; the tarball has a fixed owner, mode, order and mtime), and the aarch64-apple-darwin
-#   binary (macos-14), best effort: unsigned and not notarised. Each is audited for script on
+#   binary (macos-15), best effort: unsigned and not notarised. Each is audited for script on
 #   a site it built, packed, and attested.
 # * `image-build`, `image`: a distroless image per platform (linux/amd64 on ubuntu-latest,
 #   linux/arm64 on ubuntu-24.04-arm) made from that platform's attested binary and pushed to
@@ -240,7 +240,7 @@ jobs:
             static: true
             short: aarch64-linux-musl
           - target: aarch64-apple-darwin
-            runner: macos-14
+            runner: macos-15
             static: false
             short: aarch64-apple-darwin
     env:

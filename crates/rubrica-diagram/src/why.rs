@@ -104,6 +104,54 @@ pub enum Why {
 
 impl std::fmt::Display for Why {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("stub")
+        match self {
+            Why::Empty => f.write_str("the diagram is empty"),
+            Why::UnknownType { keyword } => write!(f, "`{keyword}` diagrams are not supported"),
+            Why::Init => {
+                f.write_str("`%%{init}%%` and other `%%{…}%%` directives are not supported")
+            }
+            Why::FrontMatter => {
+                f.write_str("front matter other than a single `title:` line is not supported")
+            }
+            Why::Click => {
+                f.write_str("`click` is not supported: a diagram cannot link or run script")
+            }
+            Why::HtmlLabel => {
+                f.write_str("HTML in a label is not supported; labels are plain text")
+            }
+            Why::Styling { keyword } => {
+                write!(
+                    f,
+                    "`{keyword}` is not supported; colours come from the theme"
+                )
+            }
+            Why::Statement { keyword } => write!(f, "`{keyword}` statements are not supported"),
+            Why::Syntax { found } => write!(f, "cannot read `{found}`"),
+            Why::UnclosedBlock { keyword } => write!(f, "`{keyword}` is not closed by `end`"),
+            Why::StrayEnd => f.write_str("`end` closes nothing"),
+            Why::EdgeToSubgraph { id } => write!(
+                f,
+                "an edge to the subgraph `{id}` is not supported; edges join nodes"
+            ),
+            Why::IdConflict { id } => write!(f, "`{id}` names both a node and a subgraph"),
+            Why::Redefined { id } => {
+                write!(f, "the node `{id}` is given two different shapes or labels")
+            }
+            Why::TwoSubgraphs { id } => write!(f, "the node `{id}` is placed in two subgraphs"),
+            Why::SubgraphTwice { id } => write!(f, "the subgraph `{id}` is opened twice"),
+            Why::SourceTooLarge { bytes, cap } => {
+                write!(
+                    f,
+                    "the diagram source is {bytes} bytes, over the limit of {cap}"
+                )
+            }
+            Why::TooMany { what, cap } => write!(f, "the diagram has more than {cap} {what}"),
+            Why::LabelTooLong { bytes, cap } => {
+                write!(f, "a label is {bytes} bytes, over the limit of {cap}")
+            }
+            Why::DrawingTooLarge => {
+                f.write_str("the drawing would be more than 999999 pixels wide or tall")
+            }
+        }
     }
 }

@@ -1,7 +1,6 @@
 //! Diagrams in a Mermaid subset, drawn to SVG in Rust. Text is measured with a table generated
 //! from the font the SVG names (`widths.rs`), so what is measured is what is drawn and nothing
 //! is read from the host.
-#![forbid(unsafe_code)]
 
 pub mod flowchart;
 mod preamble;

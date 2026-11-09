@@ -347,3 +347,100 @@ fn a_statement_is_read_once_so_time_stays_linear_in_the_source() {
     assert_eq!(f.edges.len(), 500);
     assert_eq!(f.nodes.len(), 1);
 }
+
+#[test]
+fn every_reason_has_its_fixed_text() {
+    use rubrica_diagram::Why;
+    let s = |x: &str| x.to_string();
+    let cases = [
+        (Why::Empty, "the diagram is empty"),
+        (
+            Why::UnknownType { keyword: s("pie") },
+            "`pie` diagrams are not supported",
+        ),
+        (
+            Why::Init,
+            "`%%{init}%%` and other `%%{…}%%` directives are not supported",
+        ),
+        (
+            Why::FrontMatter,
+            "front matter other than a single `title:` line is not supported",
+        ),
+        (
+            Why::Click,
+            "`click` is not supported: a diagram cannot link or run script",
+        ),
+        (
+            Why::HtmlLabel,
+            "HTML in a label is not supported; labels are plain text",
+        ),
+        (
+            Why::Styling {
+                keyword: s("style"),
+            },
+            "`style` is not supported; colours come from the theme",
+        ),
+        (
+            Why::Statement {
+                keyword: s("direction"),
+            },
+            "`direction` statements are not supported",
+        ),
+        (Why::Syntax { found: s("& C") }, "cannot read `& C`"),
+        (
+            Why::UnclosedBlock {
+                keyword: s("subgraph"),
+            },
+            "`subgraph` is not closed by `end`",
+        ),
+        (Why::StrayEnd, "`end` closes nothing"),
+        (
+            Why::EdgeToSubgraph { id: s("s") },
+            "an edge to the subgraph `s` is not supported; edges join nodes",
+        ),
+        (
+            Why::IdConflict { id: s("s") },
+            "`s` names both a node and a subgraph",
+        ),
+        (
+            Why::Redefined { id: s("A") },
+            "the node `A` is given two different shapes or labels",
+        ),
+        (
+            Why::TwoSubgraphs { id: s("A") },
+            "the node `A` is placed in two subgraphs",
+        ),
+        (
+            Why::SubgraphTwice { id: s("s") },
+            "the subgraph `s` is opened twice",
+        ),
+        (
+            Why::SourceTooLarge {
+                bytes: 40000,
+                cap: 32768,
+            },
+            "the diagram source is 40000 bytes, over the limit of 32768",
+        ),
+        (
+            Why::TooMany {
+                what: "layout cells",
+                cap: 20000,
+            },
+            "the diagram has more than 20000 layout cells",
+        ),
+        (
+            Why::LabelTooLong {
+                bytes: 300,
+                cap: 256,
+            },
+            "a label is 300 bytes, over the limit of 256",
+        ),
+        (
+            Why::DrawingTooLarge,
+            "the drawing would be more than 999999 pixels wide or tall",
+        ),
+    ];
+    for (why, text) in cases {
+        assert_eq!(why.to_string(), text);
+    }
+}

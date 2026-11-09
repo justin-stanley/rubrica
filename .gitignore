@@ -3,3 +3,5 @@ target/
 .DS_Store
 fuzz/target/
 fuzz/artifacts/
+# The wasm job's cache manifest (scripts/wasm-bundle-check.sh).
+/.wasm-bundle.sha256

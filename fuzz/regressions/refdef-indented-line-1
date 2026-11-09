@@ -1,0 +1,10 @@
+[foo]: /url1
+
+[foo]: /url2
+  ```
+aaa
+  aaa
+aaa
+  ```
+[bar][
+foo]

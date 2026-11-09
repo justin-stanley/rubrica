@@ -1890,7 +1890,7 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
 name = "rubrica"
-version = "0.1.0-rc.3"
+version = "0.1.0-rc.4"
 dependencies = [
  "clap",
  "gix",
@@ -1907,7 +1907,7 @@ dependencies = [
 
 [[package]]
 name = "rubrica-markdown"
-version = "0.1.0-rc.3"
+version = "0.1.0-rc.4"
 dependencies = [
  "bitflags 2.13.2",
  "memchr",
@@ -1920,7 +1920,7 @@ dependencies = [
 
 [[package]]
 name = "rubrica-render"
-version = "0.1.0-rc.3"
+version = "0.1.0-rc.4"
 dependencies = [
  "ammonia",
  "chrono",
@@ -1938,7 +1938,7 @@ dependencies = [
 
 [[package]]
 name = "rubrica-site"
-version = "0.1.0-rc.3"
+version = "0.1.0-rc.4"
 dependencies = [
  "askama",
  "chrono",
@@ -1954,7 +1954,7 @@ dependencies = [
 
 [[package]]
 name = "rubrica-wasm"
-version = "0.1.0-rc.3"
+version = "0.1.0-rc.4"
 dependencies = [
  "js-sys",
  "serde",
@@ -1966,7 +1966,7 @@ dependencies = [
 
 [[package]]
 name = "rubrica-wasm-bundle"
-version = "0.1.0-rc.3"
+version = "0.1.0-rc.4"
 
 [[package]]
 name = "rustc-hash"

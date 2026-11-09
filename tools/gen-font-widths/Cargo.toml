@@ -11,4 +11,4 @@ description = "Writes crates/rubrica-diagram/src/widths.rs from Inter's static T
 
 [dependencies]
 skrifa = { version = "=0.49.0", default-features = false, features = ["std"] }
-sha2 = "=0.10.9"
+sha2 = "=0.11.1"

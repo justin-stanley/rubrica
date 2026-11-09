@@ -9,9 +9,11 @@
 # Each floor started at the crate's lines coverage on main (2026-11-08), rounded down to one
 # decimal, minus 1.0. rubrica-wasm-bundle is published but has no floor: it holds only
 # include_bytes!/include_str! constants, no executable lines, so the report has no row for
-# it. rubrica-wasm is never published but its tests run, so it is held too.
+# it. rubrica-wasm is never published but its tests run, so it is held too. rubrica-diagram's
+# floor started at its first measured coverage (100.0, 2026-11-09) by the same rule.
 [floor]
 rubrica = 88.6
+rubrica-diagram = 99.0
 rubrica-markdown = 81.9
 rubrica-render = 89.0
 rubrica-site = 93.6

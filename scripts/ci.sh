@@ -54,7 +54,9 @@ cargo build --all-targets --all-features --locked
 # own temporary directories are gone when it exits.
 test_tmp="$PWD/target/ci-test-tmp"
 rm -rf "$test_tmp" && mkdir -p "$test_tmp"
-TMPDIR="$test_tmp" cargo test --all-features --locked
+# scripts/run-tests.sh runs them under cargo-nextest (and the doctests under cargo test) where it
+# is installed, and CI requires it (RUBRICA_REQUIRE_NEXTEST=1); otherwise cargo test, as it said.
+TMPDIR="$test_tmp" scripts/run-tests.sh
 left=$(find "$test_tmp" -mindepth 1 -maxdepth 1 | sort) || left="(find failed)"
 [ -z "$left" ] || {
   echo "ci: the tests left $(printf '%s\n' "$left" | wc -l | tr -d ' ') entries in TMPDIR ($test_tmp):"
@@ -87,6 +89,8 @@ scripts/test-crate-paths.sh
 scripts/crate-paths.sh
 # The coverage summary and floor check, against fixture reports (bad ones must fail).
 scripts/test-coverage-summary.sh
+# The checks CI's wasm job runs on a bundle restored from its cache (bad ones must fail).
+scripts/test-wasm-bundle-check.sh
 # The workflows, the release script, the Dockerfile and the files around them keep their
 # shape: actions pinned by SHA, job shapes, the release, wasm, platform and upgrade checks.
 # Needs ruby and actionlint.

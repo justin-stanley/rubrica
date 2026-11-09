@@ -738,7 +738,7 @@ if printf '%s\n' "$cov_report" | grep -qxF named; then
   cov_variant "no floor file" floor-check 's#coverage-floor.toml#other.toml#'
   cov_variant "a floor check that cannot fail" floor-check 's#--badge \([^ ]*\) >> "$GITHUB_STEP_SUMMARY"#--badge \1 >> "$GITHUB_STEP_SUMMARY" || true#'
   cov_variant "a site staged on pull requests" site-staged-on-main-push "s#if: github.event_name == 'push' && github.ref == 'refs/heads/main'#if: github.event_name == 'pull_request'#"
-  cov_variant "no workspace" workspace-run 's/cargo llvm-cov --workspace/cargo llvm-cov/'
+  cov_variant "no workspace" workspace-run 's/cargo llvm-cov nextest --workspace/cargo llvm-cov nextest/'
 fi
 grep_status -rniE 'codecov|coveralls|codacy|sonarcloud' "$wf"
 [ "$rc" -eq 1 ] || bad "a workflow names a coverage service: $out"
@@ -878,6 +878,228 @@ for w in 'scripts/ci.sh' 'Signed-off-by\|git commit -s' 'CHANGELOG.md'; do
   grep_status -c "$w" "$gh_dir/PULL_REQUEST_TEMPLATE.md"
   [ "$out" -ge 1 ] || bad "PULL_REQUEST_TEMPLATE.md does not mention $w"
 done
+
+# 12k. CI speed: the wasm job's bundle cache, and cargo-nextest for the test runs.
+#
+# The cache. The `wasm` job restores the bundle it would build when nothing that determines
+# its bytes changed. The key covers every such input, so a hit is the build's own output; a hit
+# skips the toolchain, the target, the CLI and the build, but still runs the checks that need no
+# build (scripts/wasm-bundle-check.sh: sizes, the sha256 recorded with the entry, the CLI
+# version) and uploads the same `wasm-bundle` artifact. A miss is today's job: the build and the
+# second, reproducibility build, then the entry is saved. The cache is for CI only: release.yml
+# builds and attests its own bundle and must not use it, and no other CI job uses it.
+#
+# nextest. The workspace's tests run under cargo-nextest, installed as a release binary at an
+# exact version and checked against its sha256 (the actionlint pattern: a `cargo install` would
+# add minutes to every job), on the `ci` profile of .config/nextest.toml, with the doctests run
+# on their own because nextest does not run them. CI sets RUBRICA_REQUIRE_NEXTEST=1 so a broken
+# install fails instead of falling back to `cargo test`. Nothing retries a failed test.
+#
+# speed_findings prints one key per property that holds; the planted variants below must each
+# lose the key they break, so the check cannot pass on files that do not have the shape.
+# The Ruby text is matched literally, so single quotes are intended.
+# shellcheck disable=SC2016
+speed_findings() { # CI RELEASE RUN_TESTS CI_SH NEXTEST_TOML BINDGEN
+  ruby -ryaml -e '
+    ci_text = File.read(ARGV[0])
+    rel_text = File.read(ARGV[1])
+    run_tests = File.exist?(ARGV[2]) ? File.read(ARGV[2]) : ""
+    ci_sh = File.read(ARGV[3])
+    nx = File.exist?(ARGV[4]) ? File.read(ARGV[4]) : ""
+    bindgen = ARGV[5]
+    d = YAML.load(ci_text)
+    jobs = d["jobs"] || {}
+    q = "\x27"
+    steps_of = lambda { |j| (j && j["steps"]) || [] }
+    run_of = lambda { |s| s["run"].to_s }
+    cond = lambda { |s| s["if"].to_s.strip.sub(/\A\$\{\{\s*(.*?)\s*\}\}\z/, "\\1") }
+
+    # ---- the cache
+    w = jobs["wasm"]
+    ws = steps_of.call(w)
+    caches = ws.select { |s| s["uses"].to_s.start_with?("actions/cache") }
+    puts "cache-only-in-wasm" if caches.size == 1 && jobs.reject { |k, _| k == "wasm" }.values.none? { |j| steps_of.call(j).any? { |s| s["uses"].to_s.start_with?("actions/cache") } }
+    puts "release-no-cache" unless rel_text.include?("actions/cache")
+    c = caches.size == 1 ? caches[0] : nil
+    if c
+      cw = c["with"] || {}
+      key = cw["key"].to_s
+      id = c["id"].to_s
+      puts "cache-pinned" if c["uses"] =~ /\Aactions\/cache@[0-9a-f]{40}\z/ && !id.empty?
+      puts "cache-no-restore-keys" unless cw.key?("restore-keys")
+      {
+        "key-wasm-crate" => "crates/rubrica-wasm/**",
+        "key-bundle-crate" => "crates/rubrica-wasm-bundle/**",
+        "key-bundle-js-excluded" => "!crates/rubrica-wasm-bundle/src/*.js",
+        "key-bundle-wasm-excluded" => "!crates/rubrica-wasm-bundle/src/*.wasm",
+        "key-bundle-meta-excluded" => "!crates/rubrica-wasm-bundle/src/meta.rs",
+        "key-cargo-lock" => "Cargo.lock",
+        "key-cargo-toml" => q + "Cargo.toml" + q,
+        "key-toolchain-file" => "rust-toolchain.toml",
+        "key-bindgen-version" => bindgen,
+        "key-build-script" => "scripts/build-wasm.sh",
+        "key-reproducible-script" => "scripts/wasm-reproducible.sh",
+        "key-workflow-file" => ".github/workflows/ci.yml",
+      }.each { |k, needle| puts k if !needle.empty? && key.include?(needle) }
+      paths = cw["path"].to_s.split("\n").map(&:strip)
+      puts "cache-paths" if (%w[rubrica-search_bg.wasm rubrica-search.js meta.rs].map { |f| "crates/rubrica-wasm-bundle/src/" + f } + ["target/wasm-bundle.sha256"]).all? { |p| paths.include?(p) }
+      miss = "steps.#{id}.outputs.cache-hit != #{q}true#{q}"
+      hit = "steps.#{id}.outputs.cache-hit == #{q}true#{q}"
+      idx = lambda { |pred| ws.index { |s| pred.call(s) } }
+      cache_i = ws.index(c)
+      puts "cache-after-checkout" if ws.first && ws.first["uses"].to_s.start_with?("actions/checkout@") && cache_i && cache_i > 0
+      on_miss = lambda { |pred, key_name|
+        i = idx.call(pred)
+        puts key_name if i && cache_i && i > cache_i && cond.call(ws[i]) == miss
+        i
+      }
+      on_miss.call(lambda { |s| s["uses"].to_s.start_with?("dtolnay/rust-toolchain@") }, "skip-toolchain-on-hit")
+      on_miss.call(lambda { |s| s["uses"].to_s.start_with?("Swatinem/rust-cache@") }, "skip-rust-cache-on-hit")
+      on_miss.call(lambda { |s| run_of.call(s).include?("rustup target add wasm32-unknown-unknown") && run_of.call(s).include?("cargo install wasm-bindgen-cli@#{bindgen} --locked") }, "skip-install-on-hit")
+      build_i = on_miss.call(lambda { |s| run_of.call(s).include?("scripts/build-wasm.sh --bundle") }, "skip-build-on-hit")
+      embed_i = on_miss.call(lambda { |s| run_of.call(s).include?("cargo test --locked -p rubrica-wasm-bundle -p rubrica-site") }, "skip-embed-test-on-hit")
+      if build_i
+        r = run_of.call(ws[build_i])
+        b = r.index("scripts/build-wasm.sh --bundle")
+        rp = r.index("scripts/wasm-reproducible.sh")
+        puts "reproducible-on-miss" if rp && b < rp && cond.call(ws[build_i]) == miss
+      end
+      wr = idx.call(lambda { |s| run_of.call(s).include?("scripts/wasm-bundle-check.sh --write") })
+      puts "manifest-written-on-miss" if wr && build_i && wr > build_i && cond.call(ws[wr]) == miss
+      vf = idx.call(lambda { |s| run_of.call(s).include?("scripts/wasm-bundle-check.sh --verify") })
+      puts "checks-run-on-hit" if vf && vf > cache_i && cond.call(ws[vf]) == hit
+      ups = ws.each_index.select { |i| ws[i]["uses"].to_s.start_with?("actions/upload-artifact@") }
+      up = ups.size == 1 ? ws[ups[0]] : nil
+      if up
+        uw = up["with"] || {}
+        puts "artifact-name" if uw["name"] == "wasm-bundle"
+        puts "artifact-paths" if uw["path"].to_s.split("\n").map(&:strip).reject(&:empty?) == %w[crates/rubrica-wasm-bundle/src/rubrica-search_bg.wasm crates/rubrica-wasm-bundle/src/rubrica-search.js crates/rubrica-wasm-bundle/src/meta.rs] && uw["if-no-files-found"] == "error"
+        puts "upload-always" if !up.key?("if") && vf && wr && ups[0] > vf && ups[0] > wr
+      end
+    end
+
+    # ---- nextest
+    env = d["env"] || {}
+    puts "nextest-version-pinned" if env["NEXTEST_VERSION"].to_s =~ /\A\d+\.\d+\.\d+\z/
+    puts "nextest-sha256-pinned" if env["NEXTEST_SHA256"].to_s =~ /\A[0-9a-f]{64}\z/
+    { "rust" => "rust", "msrv" => "msrv", "coverage" => "coverage" }.each do |n, label|
+      r = steps_of.call(jobs[n]).map { |s| run_of.call(s) }.join("\n")
+      puts "#{label}-installs-nextest" if r.include?("cargo-nextest-${NEXTEST_VERSION}") && r =~ /echo "\$\{NEXTEST_SHA256\}  [^"]+" \| sha256sum -c -/ && r.include?("curl -sSfL")
+    end
+    %w[rust msrv].each do |n|
+      puts "#{n}-requires-nextest" if ((jobs[n] || {})["env"] || {})["RUBRICA_REQUIRE_NEXTEST"].to_s == "1"
+    end
+    rust_runs = steps_of.call(jobs["rust"]).map { |s| run_of.call(s) }
+    puts "rust-runs-the-gate" if rust_runs.any? { |r| r.strip == "scripts/ci.sh" }
+    puts "gate-runs-run-tests" if ci_sh =~ /^TMPDIR="\$test_tmp" scripts\/run-tests\.sh$/ && ci_sh !~ /^\s*(TMPDIR=\S+ )?cargo test\b/
+    msrv_runs = steps_of.call(jobs["msrv"]).map { |s| run_of.call(s) }.join("\n")
+    puts "msrv-runs-run-tests" if msrv_runs =~ /^\s*scripts\/run-tests\.sh$/ && msrv_runs !~ /^\s*cargo test\b/
+    puts "run-tests-nextest-profile-ci" if run_tests =~ /^\s*cargo nextest run --workspace --all-features --locked --profile ci$/
+    puts "run-tests-doctests" if run_tests =~ /^\s*cargo test --doc --workspace --all-features --locked$/
+    puts "run-tests-fallback" if run_tests =~ /^\s*cargo test --all-features --locked$/
+    puts "run-tests-requires-nextest" if run_tests =~ /RUBRICA_REQUIRE_NEXTEST:-\}" = 1 \]; then\n\s*echo [^\n]*\n\s*exit 1/
+    # cargo-llvm-cov has its own --profile (cargo'"'"'s), so the nextest profile goes in the environment.
+    puts "coverage-nextest" if steps_of.call(jobs["coverage"]).any? { |s| run_of.call(s) =~ /^cargo llvm-cov nextest --workspace --all-features --locked --no-report$/ && (s["env"] || {})["NEXTEST_PROFILE"].to_s == "ci" }
+    # ---- the nextest config
+    prof = nx[/^\[profile\.ci\]\n(.*?)(?=^\[|\z)/m, 1].to_s
+    puts "ci-profile-no-fail-fast" if prof =~ /^fail-fast = false\s*(#.*)?$/
+    puts "ci-profile-no-retries" if prof =~ /^retries = 0\s*(#.*)?$/
+    everywhere = [ci_text, rel_text, run_tests, ci_sh, nx].join("\n")
+    retry_lines = everywhere.lines.select { |l| l =~ /\bretries\b|--retries|NEXTEST_RETRIES/ && l !~ /\A\s*#/ }
+    puts "no-retries" if retry_lines.all? { |l| l =~ /\A\s*retries = 0\s*(#.*)?\z/ }
+  ' "$@"
+}
+speed_keys="cache-only-in-wasm release-no-cache cache-pinned cache-no-restore-keys
+  key-wasm-crate key-bundle-crate key-bundle-js-excluded key-bundle-wasm-excluded key-bundle-meta-excluded
+  key-cargo-lock key-cargo-toml key-toolchain-file key-bindgen-version key-build-script key-reproducible-script
+  key-workflow-file cache-paths cache-after-checkout skip-toolchain-on-hit skip-rust-cache-on-hit
+  skip-install-on-hit skip-build-on-hit skip-embed-test-on-hit reproducible-on-miss manifest-written-on-miss
+  checks-run-on-hit artifact-name artifact-paths upload-always
+  nextest-version-pinned nextest-sha256-pinned rust-installs-nextest msrv-installs-nextest coverage-installs-nextest
+  rust-requires-nextest msrv-requires-nextest rust-runs-the-gate gate-runs-run-tests msrv-runs-run-tests
+  run-tests-nextest-profile-ci run-tests-doctests run-tests-fallback run-tests-requires-nextest coverage-nextest
+  ci-profile-no-fail-fast ci-profile-no-retries no-retries"
+speed_real() { speed_findings "$wf/ci.yml" "$rel" scripts/run-tests.sh scripts/ci.sh .config/nextest.toml "$bindgen"; }
+speed_report=$(speed_real 2>&1) || bad "the CI speed check failed: $speed_report"
+for k in $speed_keys; do
+  printf '%s\n' "$speed_report" | grep -qxF "$k" || bad "CI speed: $k does not hold"
+done
+# speed_variant NAME KEY FILE REGEX REPLACEMENT: the five files with every match of REGEX in
+# FILE (ci: ci.yml, rel: release.yml, run: run-tests.sh, cish: ci.sh, nx: nextest.toml)
+# replaced lose KEY. A `\n` in REPLACEMENT is a newline. Skipped when the real files already
+# lack KEY (reported above).
+speed_variant() {
+  local name=$1 key=$2 which=$3 got sv="$notes_tmp/speed" target
+  case $which in
+    ci) target=ci.yml ;; rel) target=release.yml ;; run) target=run-tests.sh ;;
+    cish) target=ci.sh ;; nx) target=nextest.toml ;; *) bad "CI speed variant ($name): no file $which"; return ;;
+  esac
+  printf '%s\n' "$speed_report" | grep -qxF "$key" || return 0
+  mkdir -p "$sv"
+  cp "$wf/ci.yml" "$sv/ci.yml"; cp "$rel" "$sv/release.yml"; cp scripts/run-tests.sh "$sv/run-tests.sh"
+  cp scripts/ci.sh "$sv/ci.sh"; cp .config/nextest.toml "$sv/nextest.toml"
+  cp "$sv/$target" "$sv/orig"
+  ruby -e 'File.write(ARGV[0], File.read(ARGV[0]).gsub(Regexp.new(ARGV[1]), ARGV[2].gsub("\\n", "\n")))' "$sv/$target" "$4" "$5"
+  if cmp -s "$sv/orig" "$sv/$target"; then bad "CI speed variant ($name): the edit changed nothing"; return; fi
+  got=$(speed_findings "$sv/ci.yml" "$sv/release.yml" "$sv/run-tests.sh" "$sv/ci.sh" "$sv/nextest.toml" "$bindgen" 2>&1) \
+    || { bad "CI speed variant ($name): $got"; return; }
+  if printf '%s\n' "$got" | grep -qxF "$key"; then bad "CI speed variant ($name): still reports $key"; fi
+}
+# The cache key loses each input: the quoted argument of hashFiles() is replaced by a path
+# that names nothing.
+for pair in 'key-wasm-crate|crates/rubrica-wasm/\*\*' 'key-bundle-crate|crates/rubrica-wasm-bundle/\*\*' \
+  'key-bundle-js-excluded|!crates/rubrica-wasm-bundle/src/\*\.js' 'key-bundle-wasm-excluded|!crates/rubrica-wasm-bundle/src/\*\.wasm' \
+  'key-bundle-meta-excluded|!crates/rubrica-wasm-bundle/src/meta\.rs' 'key-cargo-lock|Cargo\.lock' \
+  'key-cargo-toml|Cargo\.toml' 'key-toolchain-file|rust-toolchain\.toml' \
+  'key-build-script|scripts/build-wasm\.sh' 'key-reproducible-script|scripts/wasm-reproducible\.sh' \
+  'key-workflow-file|\.github/workflows/ci\.yml'; do
+  k=${pair%%|*}; re=${pair#*|}
+  speed_variant "the key without ${k#key-}" "$k" ci "(?<=[(, ])'$re'" "'nothing'"
+done
+speed_variant "a key without the CLI version" key-bindgen-version ci 'bindgen-[0-9]+\.[0-9]+\.[0-9]+-' 'bindgen-'
+speed_variant "an unpinned cache action" cache-pinned ci 'actions/cache@[0-9a-f]{40}' 'actions/cache@v6'
+speed_variant "a cache that falls back to older keys" cache-no-restore-keys ci '(\n          key: wasm-bundle)' "\n          restore-keys: wasm-bundle-\\1"
+speed_variant "a cache in another job" cache-only-in-wasm ci '(  spec:\n(?:.*\n)*?    steps:\n)' "\\1      - uses: actions/cache@0000000000000000000000000000000000000000 # v0\n        with: { path: x, key: y }\n"
+speed_variant "a release that uses the cache" release-no-cache rel 'actions/upload-artifact@' 'actions/cache@'
+speed_variant "a cache without the manifest" cache-paths ci '            target/wasm-bundle\.sha256\n' ''
+speed_variant "a cache without meta.rs" cache-paths ci '            crates/rubrica-wasm-bundle/src/meta\.rs\n            target/' '            target/'
+# A hit skips the toolchain, the target and CLI, and the build; a miss runs them.
+speed_variant "a toolchain installed on a hit" skip-toolchain-on-hit ci '(dtolnay/rust-toolchain@[0-9a-f]{40} # stable\n)        if: [^\n]*\n' '\1'
+speed_variant "rust-cache restored on a hit" skip-rust-cache-on-hit ci '(Swatinem/rust-cache@[0-9a-f]{40} # v2\n)        if: [^\n]*\n' '\1'
+speed_variant "the CLI installed on a hit" skip-install-on-hit ci '(- name: The wasm target and the wasm-bindgen CLI, pinned\n)        if: [^\n]*\n' '\1'
+speed_variant "a build on a hit" skip-build-on-hit ci '(- name: Build the bundle; a second build gives the same bytes\n)        if: [^\n]*\n' '\1'
+speed_variant "the embed test on a hit" skip-embed-test-on-hit ci '(- name: The bundle crate, and the site that embeds it\n)        if: [^\n]*\n' '\1'
+speed_variant "a build only on a hit" reproducible-on-miss ci '(Build the bundle; a second build gives the same bytes\n        if: steps\.wasm-cache\.outputs\.cache-hit )!=' '\1=='
+speed_variant "no reproducibility build" reproducible-on-miss ci '\n          scripts/wasm-reproducible\.sh\n' "\n"
+speed_variant "a reproducibility build before the build" reproducible-on-miss ci '(          )scripts/build-wasm\.sh --bundle\n          scripts/wasm-reproducible\.sh\n' '\1scripts/wasm-reproducible.sh\n\1scripts/build-wasm.sh --bundle\n'
+speed_variant "no manifest written" manifest-written-on-miss ci 'scripts/wasm-bundle-check\.sh --write' 'true'
+speed_variant "no check on a hit" checks-run-on-hit ci 'scripts/wasm-bundle-check\.sh --verify' 'true'
+speed_variant "the checks on a miss" checks-run-on-hit ci '(Check the cached bundle[^\n]*\n        )if: steps\.wasm-cache\.outputs\.cache-hit ==' '\1if: steps.wasm-cache.outputs.cache-hit !='
+speed_variant "another artifact name" artifact-name ci '(name: wasm-bundle)(\n          path: \|)' '\1-cached\2'
+speed_variant "an artifact without meta.rs" artifact-paths ci '            crates/rubrica-wasm-bundle/src/meta\.rs\n          if-no-files-found' '          if-no-files-found'
+speed_variant "an upload on a miss only" upload-always ci '(- uses: actions/upload-artifact@[0-9a-f]{40} # v7\.0\.2\n)(        with:\n          name: wasm-bundle\n)' "\\1        if: steps.wasm-cache.outputs.cache-hit != 'true'\n\\2"
+# nextest.
+speed_variant "an unpinned nextest" nextest-version-pinned ci 'NEXTEST_VERSION: [0-9.]+' 'NEXTEST_VERSION: latest'
+speed_variant "no nextest checksum" nextest-sha256-pinned ci 'NEXTEST_SHA256: [0-9a-f]{64}' 'NEXTEST_SHA256: ""'
+speed_variant "an unchecked nextest download" rust-installs-nextest ci '          echo "\$\{NEXTEST_SHA256\}  [^\n]*sha256sum -c -\n' ''
+speed_variant "nextest not required in the Rust job" rust-requires-nextest ci 'RUBRICA_REQUIRE_NEXTEST: "1"' 'RUBRICA_REQUIRE_NEXTEST: "0"'
+speed_variant "nextest not required in the MSRV job" msrv-requires-nextest ci '(RUSTUP_TOOLCHAIN: "1\.94"\n)      # [^\n]*\n      RUBRICA_REQUIRE_NEXTEST: "1"\n' '\1'
+# shellcheck disable=SC2016
+speed_variant "a gate that runs cargo test" gate-runs-run-tests cish 'TMPDIR="\$test_tmp" scripts/run-tests\.sh' 'TMPDIR="$test_tmp" cargo test --all-features --locked'
+speed_variant "an MSRV job that runs cargo test" msrv-runs-run-tests ci '(        run: \|\n(?:          [^\n]*\n)*?)          scripts/run-tests\.sh\n' "\\1          cargo test --locked --all-features\n"
+speed_variant "nextest off the ci profile" run-tests-nextest-profile-ci run ' --locked --profile ci\n' " --locked\n"
+speed_variant "no doctests" run-tests-doctests run '  cargo test --doc[^\n]*\n' ''
+speed_variant "doctests of one crate" run-tests-doctests run 'cargo test --doc --workspace' 'cargo test --doc -p rubrica'
+speed_variant "a missing nextest that falls back in CI" run-tests-requires-nextest run '\n  exit 1\nelse' "\nelse"
+speed_variant "no fallback" run-tests-fallback run '  cargo test --all-features --locked\nfi' 'fi'
+speed_variant "coverage without nextest" coverage-nextest ci 'cargo llvm-cov nextest --workspace' 'cargo llvm-cov --workspace'
+speed_variant "coverage off the ci profile" coverage-nextest ci 'NEXTEST_PROFILE: ci' 'NEXTEST_PROFILE: default'
+speed_variant "coverage that is not workspace-wide" coverage-nextest ci 'cargo llvm-cov nextest --workspace' 'cargo llvm-cov nextest'
+speed_variant "a profile that stops at the first failure" ci-profile-no-fail-fast nx 'fail-fast = false' 'fail-fast = true'
+speed_variant "a profile that retries" ci-profile-no-retries nx 'retries = 0' 'retries = 2'
+speed_variant "a profile that retries" no-retries nx 'retries = 0' 'retries = 2'
+speed_variant "a default profile that retries" no-retries nx '\[profile\.default\]\n' "[profile.default]\nretries = { count = 3, backoff = \"fixed\", delay = \"1s\" }\n"
+speed_variant "a retries flag" no-retries run ' --locked --profile ci\n' " --locked --profile ci --retries 2\n"
 
 # 13. The Dockerfile's base image is pinned by digest, and it runs as a non-root user.
 [ -f Dockerfile ] || { bad "Dockerfile is missing"; exit 1; }

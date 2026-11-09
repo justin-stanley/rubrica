@@ -171,15 +171,18 @@ fn rubrica(args: &[&str], cwd: &Path) -> Output {
         .expect("rubrica runs")
 }
 
-/// The empty directory `rubrica build` runs in: one for the test process,
-/// made once, under cargo's target tmp dir (CARGO_TARGET_TMPDIR, not
-/// TMPDIR, since a static is never dropped), so a run leaves nothing in
-/// TMPDIR and makes no directory per build.
+/// The empty directory `rubrica build` runs in: made once per test process,
+/// under cargo's target tmp dir (CARGO_TARGET_TMPDIR, not TMPDIR, since a
+/// static is never dropped), so a run leaves nothing in TMPDIR and makes no
+/// directory per build. It is shared by every test process (nextest runs
+/// each test in its own, at the same time), so it is created, never removed
+/// and recreated: a process doing that would pull it from under the
+/// builds of the others. `rubrica build` writes nothing to its working
+/// directory.
 fn cwd() -> &'static Path {
     static CWD: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
     CWD.get_or_init(|| {
         let dir = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("build-cwd");
-        let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir.canonicalize().unwrap()
     })

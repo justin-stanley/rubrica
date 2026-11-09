@@ -132,6 +132,30 @@ gate_report=$(ruby -ryaml -e '
 ' "$wf/ci.yml" "$wf/release.yml")
 [ -z "$gate_report" ] || bad "$gate_report"
 
+# 7c. A cross-compiling job adds its target to the toolchain cargo runs: rust-toolchain.toml
+# pins the version, and dtolnay/rust-toolchain's `targets:` input adds the target to the
+# toolchain *it* installs (stable), not to the pinned one (v0.1.0-rc.2's musl builds failed
+# with "can't find crate for `core`"). So a `rustup target add` in the checkout, before the
+# build, and no `targets:` input that only looks as if it helps.
+target_report=$(ruby -ryaml -e '
+  ARGV.each do |f|
+    d = YAML.load_file(f)
+    (d["jobs"] || {}).each do |id, j|
+      steps = j["steps"] || []
+      i_build = steps.index { |s| s["run"].to_s =~ /cargo (build|test|nextest run)[^\n]*--target / }
+      next unless i_build
+      i_add = steps.index { |s| s["run"].to_s =~ /rustup target add / }
+      i_co = steps.index { |s| s["uses"].to_s.start_with?("actions/checkout@") }
+      puts "#{File.basename(f)}:#{id}: builds with --target but runs no rustup target add before it, after the checkout" unless i_add && i_co && i_co < i_add && i_add < i_build
+      steps.each do |s|
+        next unless s["uses"].to_s.start_with?("dtolnay/rust-toolchain@")
+        puts "#{File.basename(f)}:#{id}: dtolnay/rust-toolchain has a targets: input; it adds them to stable, not the pinned toolchain" if (s["with"] || {}).key?("targets")
+      end
+    end
+  end
+' "$wf"/*.yml)
+[ -z "$target_report" ] || bad "$target_report"
+
 # 8. The MSRV job overrides rustup's toolchain-file choice.
 grep_status -nE '^      RUSTUP_TOOLCHAIN: "1\.94"$' "$wf/ci.yml"
 [ "$rc" -eq 0 ] || bad 'ci.yml has no RUSTUP_TOOLCHAIN: "1.94" in the MSRV job env'

@@ -150,6 +150,29 @@ fn a_pipe_header_ending_in_a_hard_break_on_a_lazy_line_closes_the_container() {
     );
 }
 
+/// A link reference definition acts as a paragraph for lazy continuation, so a header on the
+/// lazy line after one is the lazy-header case too: the table opens inside the quote, as
+/// when the quote's paragraph is text. Before, the line was taken as a table interrupt,
+/// which closed the quote, and then no table opened (fuzz `differential`, issue 45). Where
+/// no table can open, the line continues the quote as upstream's does.
+#[test]
+fn a_header_on_a_lazy_line_after_a_definition_opens_the_table_inside_the_quote() {
+    assert_eq!(
+        shape(">[a]: b\nz\n>-|"),
+        "<bq><table><head><cell>z</cell></head></table></bq>"
+    );
+    assert_eq!(
+        shape(">[a]: b\n|z\n>-|"),
+        "<bq><table><head><cell>z</cell></head></table></bq>"
+    );
+    // The cell counts differ: no table, and the parse is upstream's.
+    let src = ">[a]: b\nz\n>-|-";
+    assert_eq!(ranges(src), upstream_ranges(src));
+    // A hard break ends the header: no table opens, upstream's cut stands.
+    let src = ">[a]: b\n|\\\n>-|";
+    assert_eq!(ranges(src), upstream_ranges(src));
+}
+
 #[test]
 fn an_underline_is_the_header_when_a_one_cell_delimiter_row_follows() {
     assert_eq!(

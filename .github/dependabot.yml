@@ -14,6 +14,17 @@ updates:
       cargo-minor-patch:
         update-types: [minor, patch]
 
+  - package-ecosystem: cargo
+    directory: "/tools/gen-font-widths"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 2
+    commit-message:
+      prefix: "deps(cargo)"
+    groups:
+      cargo-minor-patch:
+        update-types: [minor, patch]
+
   - package-ecosystem: github-actions
     directory: "/"
     schedule:

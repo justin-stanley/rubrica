@@ -38,5 +38,7 @@ tests/linear.rs
 tests/memory.rs
 tests/paths.rs
 tests/site.rs
+theme/fonts/Inter-Regular.woff2
+theme/fonts/OFL.txt
 theme/icon.svg
 theme/rubrica.css

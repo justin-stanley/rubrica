@@ -45,6 +45,11 @@ cargo fmt --all --check
 if cargo tree -e features --all-features --locked --workspace -i rubrica-render | grep -i strict; then
   echo "ci: a strict feature reaches the build under --all-features; strictness is test-only"; exit 1
 fi
+# No font crate in the shipped graph: the diagrams measure text with a generated table
+# (tools/gen-font-widths, its own workspace). ttf-parser carries an unmaintained-crate advisory.
+if cargo tree -e all --locked --workspace | grep -E '(skrifa|read-fonts|font-types|ttf-parser|fontdb) v'; then
+  echo "ci: a font crate is in the workspace graph; the width table is generated outside it"; exit 1
+fi
 cargo build --all-targets --all-features --locked
 # The tests clean up after themselves: run with TMPDIR a fresh,
 # empty directory, they leave nothing in it. A test's scratch directory is a

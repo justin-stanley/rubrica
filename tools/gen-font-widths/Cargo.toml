@@ -1,0 +1,14 @@
+[package]
+name = "gen-font-widths"
+version = "0.0.0"
+edition = "2021"
+license = "AGPL-3.0-only"
+publish = false
+description = "Writes crates/rubrica-diagram/src/widths.rs from Inter's static TTF."
+
+# Its own workspace: skrifa never enters the rubrica workspace's Cargo.lock.
+[workspace]
+
+[dependencies]
+skrifa = { version = "=0.49.0", default-features = false, features = ["std"] }
+sha2 = "=0.10.9"

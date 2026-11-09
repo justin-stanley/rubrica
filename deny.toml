@@ -40,6 +40,7 @@ allow = [
     "Unicode-3.0",     # ICU / unicode-ident
     "Unicode-DFS-2016", # finl_unicode, with MIT OR Apache-2.0
     "CDLA-Permissive-2.0",
+    "OFL-1.1",          # Inter, the diagram font (rubrica-site ships it)
 ]
 confidence-threshold = 0.9
 

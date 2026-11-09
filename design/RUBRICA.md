@@ -23,7 +23,8 @@ Markdown pages; Rubrica checks it, builds it into a static site, and, from 0.2, 
 | `rubrica-render` | The writer that turns parse events into HTML, the sanitizer, front matter, slugs and `@sec` markers. |
 | `rubrica-site` | The corpus model (pages, URLs), navigation, tables of contents, the link graph, the search index, templates, and the static build. |
 | `rubrica` | The command-line tool: `check` and `build`; `serve` later. |
-| `rubrica-wasm`, `rubrica-diagram` | Later: search in the browser, and diagrams. |
+| `rubrica-wasm` | Search in the browser. |
+| `rubrica-diagram` | Mermaid-subset diagrams drawn to SVG, and the text widths of the diagram font. |
 
 ### Data flow of `rubrica build`
 

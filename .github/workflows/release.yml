@@ -23,9 +23,10 @@ name: Release
 #   linux/arm64 on ubuntu-24.04-arm) made from that platform's attested binary and pushed to
 #   GHCR by digest; then one multi-architecture manifest tagged with the version (and `latest`
 #   for a final release), whose digest has its own attestation.
-# * `publish-markdown`, `publish-render`, `publish-wasm-bundle`, `publish-site`, `publish-bin`:
-#   the five crates to crates.io, one job each, in the order they depend on each other (the
-#   bundle crate before `rubrica-site`, which embeds it), starting only after `build` and
+# * `publish-markdown`, `publish-render`, `publish-diagram`, `publish-wasm-bundle`, `publish-site`, `publish-bin`:
+#   the six crates to crates.io, one job each, in the order they depend on each other (the
+#   bundle crate before `rubrica-site`, which embeds it; `rubrica-diagram` depends on nothing
+#   and follows the renderer to keep one linear chain), starting only after `build` and
 #   `image` have succeeded, since a published version cannot be taken back. Each runs under the `crates-io`
 #   environment, which needs the maintainer's approval, and never for a candidate tag. Each
 #   skips a crate that is already published at this version, so a failed chain is re-run;
@@ -592,9 +593,71 @@ jobs:
         with:
           subject-path: target/package/rubrica-render-${{ steps.seen.outputs.version }}.crate
 
+  publish-diagram:
+    name: Publish rubrica-diagram to crates.io
+    needs: publish-render
+    if: ${{ !contains(github.ref_name, '-rc.') }}
+    runs-on: ubuntu-latest
+    environment: crates-io # requires the maintainer's approval
+    permissions:
+      contents: read
+      id-token: write # crates.io Trusted Publishing, and the attestation
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
+      - name: Is rubrica-diagram already on crates.io at this version?
+        id: seen
+        run: |
+          set -euo pipefail
+          V=$(cargo pkgid --locked -p rubrica-diagram | sed 's/.*[#@]//')
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          code=$(curl -s -o /dev/null -w '%{http_code}' -A 'rubrica-release (https://github.com/justin-stanley/rubrica)' "https://crates.io/api/v1/crates/rubrica-diagram/$V")
+          case "$code" in
+            200) echo "rubrica-diagram $V is already published"; echo "published=true" >> "$GITHUB_OUTPUT" ;;
+            404) echo "published=false" >> "$GITHUB_OUTPUT" ;;
+            *) echo "::error::crates.io answered $code for rubrica-diagram $V"; exit 1 ;;
+          esac
+      - name: Pack rubrica-diagram (file list, size, and the unpacked crate builds alone)
+        if: ${{ steps.seen.outputs.published != 'true' }}
+        run: scripts/package-check.sh rubrica-diagram
+      - uses: rust-lang/crates-io-auth-action@3268eb413133e2960fa4ae0e963ca76380c54cd9 # v1.0.6
+        id: auth
+        if: ${{ steps.seen.outputs.published != 'true' && vars.FIRST_PUBLISH_RUBRICA_DIAGRAM != 'true' }}
+      - name: Publish rubrica-diagram
+        if: ${{ steps.seen.outputs.published != 'true' }}
+        env:
+          # The first publish of a crate has no Trusted Publishing configuration yet: the owner
+          # sets FIRST_PUBLISH_RUBRICA_DIAGRAM and the CRATES_IO_PUBLISH_NEW secret for one day.
+          CARGO_REGISTRY_TOKEN: ${{ vars.FIRST_PUBLISH_RUBRICA_DIAGRAM == 'true' && secrets.CRATES_IO_PUBLISH_NEW || steps.auth.outputs.token }}
+        # --no-verify: package-check built the unpacked crate. --allow-dirty: the bundle crate's files are
+        # git-ignored; the checkout is otherwise clean, and the check below compares the bytes.
+        run: cargo publish --locked --no-verify -p rubrica-diagram --allow-dirty
+      - name: crates.io holds exactly the bytes that were packed
+        if: ${{ steps.seen.outputs.published != 'true' }}
+        env:
+          V: ${{ steps.seen.outputs.version }}
+        run: |
+          set -euo pipefail
+          want=$(sha256sum "target/package/rubrica-diagram-$V.crate" | cut -d' ' -f1)
+          # The download appears a little after the publish returns.
+          for i in $(seq 12); do
+            curl -sfL -o crates-io.crate "https://static.crates.io/crates/rubrica-diagram/rubrica-diagram-$V.crate" && break
+            [ "$i" -lt 12 ] || { echo "::error::rubrica-diagram $V is not downloadable from crates.io"; exit 1; }
+            sleep 10
+          done
+          got=$(sha256sum crates-io.crate | cut -d' ' -f1)
+          [ "$got" = "$want" ] || { echo "::error::crates.io holds $got for rubrica-diagram $V, packed $want"; exit 1; }
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        if: ${{ steps.seen.outputs.published != 'true' }}
+        with:
+          subject-path: target/package/rubrica-diagram-${{ steps.seen.outputs.version }}.crate
+
   publish-wasm-bundle:
     name: Publish rubrica-wasm-bundle to crates.io
-    needs: [publish-render, wasm]
+    needs: [publish-diagram, wasm]
     if: ${{ !contains(github.ref_name, '-rc.') }}
     runs-on: ubuntu-latest
     environment: crates-io # requires the maintainer's approval

@@ -27,6 +27,7 @@ homepage = "https://github.com/justin-stanley/rubrica"
 # A new release line moves both ends.
 rubrica-markdown = { path = "crates/rubrica-markdown", version = ">=0.1.0-0, <0.2.0" }
 rubrica-render = { path = "crates/rubrica-render", version = ">=0.1.0-0, <0.2.0" }
+rubrica-diagram = { path = "crates/rubrica-diagram", version = ">=0.1.0-0, <0.2.0" }
 # default-features = false: the binary crate (`rubrica`) forwards the `search-wasm` feature.
 rubrica-site = { path = "crates/rubrica-site", version = ">=0.1.0-0, <0.2.0", default-features = false }
 rubrica-wasm-bundle = { path = "crates/rubrica-wasm-bundle", version = ">=0.1.0-0, <0.2.0" }

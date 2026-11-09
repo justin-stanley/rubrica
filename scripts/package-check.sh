@@ -30,7 +30,7 @@ crate=$1
 
 cfg=()
 if [ "$patch" -eq 1 ]; then
-  for s in rubrica-markdown rubrica-render rubrica-wasm-bundle rubrica-site; do
+  for s in rubrica-markdown rubrica-render rubrica-diagram rubrica-wasm-bundle rubrica-site; do
     [ "$s" = "$crate" ] || cfg+=(--config "patch.crates-io.$s.path=\"$root/crates/$s\"")
   done
 fi

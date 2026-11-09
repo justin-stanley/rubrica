@@ -1,0 +1,17 @@
+[package]
+name = "rubrica-diagram"
+description = "Mermaid-subset diagrams as SVG, drawn in Rust: no JavaScript, no font parser at run time."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+# Not published yet: the publish chain adds it when the crate does something.
+publish = false
+readme = "README.md"
+keywords = ["diagram", "svg", "mermaid", "flowchart"]
+categories = ["visualization", "text-processing"]
+
+[lints]
+workspace = true

@@ -489,6 +489,8 @@ jobs:
           tool: cargo-audit@${{ env.CARGO_AUDIT_VERSION }}
       # bincode 1.x via syntect's dump-load: the syntax dump is a build-time embedded blob, never input
       - run: cargo audit -D warnings --ignore RUSTSEC-2025-0141
+      # tools/gen-font-widths is its own workspace with its own lock file, which the audit above never reads.
+      - run: cargo audit -D warnings --file tools/gen-font-widths/Cargo.lock
 
   secrets:
     name: Secret scan

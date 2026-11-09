@@ -394,7 +394,7 @@ plat_report=$(ruby -ryaml -e '
     inc = ((b["strategy"] || {})["matrix"] || {})["include"] || []
     got = inc.map { |e| [e["target"], e["runner"], e["static"], e["short"]] }.sort_by(&:first)
     want = [
-      ["aarch64-apple-darwin", "macos-14", false, "aarch64-apple-darwin"],
+      ["aarch64-apple-darwin", "macos-15", false, "aarch64-apple-darwin"],
       ["aarch64-unknown-linux-musl", "ubuntu-24.04-arm", true, "aarch64-linux-musl"],
       ["x86_64-unknown-linux-musl", "ubuntu-latest", true, "x86_64-linux-musl"],
     ]

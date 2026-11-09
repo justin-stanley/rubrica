@@ -1,0 +1,35 @@
+acc-title.mmd	2	`accTitle` statements are not supported
+ampersand.mmd	2	cannot read `& C`
+bad-direction.mmd	1	cannot read `XY`
+circle-shape.mmd	2	cannot read `((round)) --> B`
+class-shorthand.mmd	2	`:::` is not supported; colours come from the theme
+classdef.mmd	2	`classDef` is not supported; colours come from the theme
+click.mmd	3	`click` is not supported: a diagram cannot link or run script
+direction-in-subgraph.mmd	3	`direction` statements are not supported
+edge-both.mmd	2	cannot read `<--> B`
+edge-circle.mmd	2	cannot read `--o B`
+edge-long.mmd	2	cannot read `---> B`
+edge-to-subgraph.mmd	5	an edge to the subgraph `s` is not supported; edges join nodes
+empty-label.mmd	2	cannot read `[] --> B`
+empty.mmd	0	the diagram is empty
+front-matter-config.mmd	2	front matter other than a single `title:` line is not supported
+front-matter-unclosed.mmd	1	front matter other than a single `title:` line is not supported
+header-only.mmd	0	the diagram is empty
+html-br.mmd	2	HTML in a label is not supported; labels are plain text
+html-edge-label.mmd	2	HTML in a label is not supported; labels are plain text
+id-conflict.mmd	3	`s` names both a node and a subgraph
+init-late.mmd	3	`%%{init}%%` and other `%%{…}%%` directives are not supported
+init.mmd	1	`%%{init}%%` and other `%%{…}%%` directives are not supported
+linkstyle.mmd	3	`linkStyle` is not supported; colours come from the theme
+long-found.mmd	2	cannot read `--x BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB…`
+metadata-shape.mmd	2	cannot read `@{ shape: circle } --> B`
+no-header.mmd	1	`A` diagrams are not supported
+pie.mmd	1	`pie` diagrams are not supported
+redefined.mmd	3	the node `A` is given two different shapes or labels
+state-v1.mmd	1	`stateDiagram` diagrams are not supported
+stray-end.mmd	3	`end` closes nothing
+style.mmd	3	`style` is not supported; colours come from the theme
+subgraph-twice.mmd	5	the subgraph `s` is opened twice
+two-subgraphs.mmd	6	the node `A` is placed in two subgraphs
+unclosed-subgraph.mmd	2	`subgraph` is not closed by `end`
+unterminated-pipe.mmd	2	cannot read `|yes B`

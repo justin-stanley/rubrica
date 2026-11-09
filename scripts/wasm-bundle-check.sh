@@ -12,7 +12,8 @@
 #                                                    recorded, and meta.rs names the
 #                                                    wasm-bindgen version Cargo.lock pins
 #
-# DIR is crates/rubrica-wasm-bundle/src and MANIFEST target/wasm-bundle.sha256 unless given.
+# DIR is crates/rubrica-wasm-bundle/src and MANIFEST .wasm-bundle.sha256 unless given (outside
+# target/, which rust-cache prunes before the cache entry is saved).
 # The manifest travels in the cache beside the files, so a damaged or half-restored entry fails
 # here rather than reaching the jobs that embed the bundle.
 #
@@ -25,7 +26,7 @@ case $mode in --write | --verify) ;; *) echo "wasm-bundle-check: usage: $0 --wri
 [ "$#" -le 3 ] || { echo "wasm-bundle-check: too many arguments" >&2; exit 2; }
 cd "$(dirname "$0")/.." || { echo "wasm-bundle-check: cannot enter the repository root" >&2; exit 2; }
 dir=${2:-crates/rubrica-wasm-bundle/src}
-manifest=${3:-target/wasm-bundle.sha256}
+manifest=${3:-.wasm-bundle.sha256}
 files="rubrica-search_bg.wasm rubrica-search.js meta.rs"
 
 sha256_of() {

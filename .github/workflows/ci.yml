@@ -73,8 +73,8 @@ jobs:
             crates/rubrica-wasm-bundle/src/rubrica-search_bg.wasm
             crates/rubrica-wasm-bundle/src/rubrica-search.js
             crates/rubrica-wasm-bundle/src/meta.rs
-            target/wasm-bundle.sha256
-          key: wasm-bundle-v1-${{ runner.os }}-bindgen-0.2.126-${{ hashFiles('crates/rubrica-wasm/**', 'crates/rubrica-wasm-bundle/**', '!crates/rubrica-wasm-bundle/src/*.js', '!crates/rubrica-wasm-bundle/src/*.wasm', '!crates/rubrica-wasm-bundle/src/meta.rs', 'Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml', 'scripts/build-wasm.sh', 'scripts/wasm-reproducible.sh', '.github/workflows/ci.yml') }}
+            .wasm-bundle.sha256
+          key: wasm-bundle-v2-${{ runner.os }}-bindgen-0.2.126-${{ hashFiles('crates/rubrica-wasm/**', 'crates/rubrica-wasm-bundle/**', '!crates/rubrica-wasm-bundle/src/*.js', '!crates/rubrica-wasm-bundle/src/*.wasm', '!crates/rubrica-wasm-bundle/src/meta.rs', 'Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml', 'scripts/build-wasm.sh', 'scripts/wasm-reproducible.sh', '.github/workflows/ci.yml') }}
       # No `toolchain:` input: the action honours rust-toolchain.toml (1.97.0). The target is
       # added to that toolchain, the one cargo runs here.
       - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable

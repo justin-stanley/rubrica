@@ -24,6 +24,8 @@ vulnerabilities are named here too (see [SECURITY.md](SECURITY.md)).
 
 ## Unreleased
 
+## [0.1.0] - 2026-11-09
+
 ### Added
 
 - `rubrica check`, which checks a Markdown git repository for dead internal links and anchors,

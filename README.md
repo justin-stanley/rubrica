@@ -59,7 +59,7 @@ Serve `out/` with any file server that tries `{path}.html`, then `{path}`, then
 
 ## Status
 
-Pre-release. 0.1.0 is the first release: `rubrica check` and `rubrica build`. The milestones:
+0.1.0 is the first release: `rubrica check` and `rubrica build`. The milestones:
 
 | | |
 |---|---|
@@ -76,7 +76,7 @@ See [design/ROADMAP.md](design/ROADMAP.md).
 
 ## Install
 
-Nothing is published yet. From 0.1.0 (details in [docs/install.md](docs/install.md)):
+From 0.1.0 (details in [docs/install.md](docs/install.md)):
 
 - **GitHub release**, every tarball attested; verify a download with
   `gh attestation verify <tarball> --repo justin-stanley/rubrica`. Static Linux x86_64 and

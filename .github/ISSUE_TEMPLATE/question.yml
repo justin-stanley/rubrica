@@ -1,0 +1,22 @@
+name: Question
+description: Ask how to configure or run Rubrica.
+labels: ["question", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The [docs](https://github.com/justin-stanley/rubrica/tree/main/docs) and the README answer
+        many questions; search existing issues too. A bug or a feature request has its own form.
+  - type: textarea
+    id: question
+    attributes:
+      label: Your question
+      description: What you are trying to do, and what you have tried.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Rubrica version
+      description: The output of `rubrica --version`.
+      placeholder: rubrica 0.1.0

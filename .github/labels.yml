@@ -8,6 +8,9 @@
 - name: feature
   color: 0e8a16
   description: A new capability, agreed in an issue first
+- name: question
+  color: d876e3
+  description: How to configure or run Rubrica
 - name: docs
   color: 0075ca
   description: Documentation only

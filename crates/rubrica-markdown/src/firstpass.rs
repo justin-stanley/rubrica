@@ -459,13 +459,14 @@ impl<'a, 'b> FirstPass<'a, 'b> {
         let mut line_start = LineStart::new(bytes);
         let tree_position = scan_containers(&self.tree, &mut line_start, self.options, false);
         let current_container = tree_position == self.tree.spine_len();
-        if (!line_start.scan_space(4)
-            && self.scan_paragraph_interrupt(
-                &self.text[self.text.len() - bytes.len() + line_start.bytes_scanned()..],
-                current_container,
-                tree_position,
-            ))
-            || scan_blank_line(&bytes[line_start.bytes_scanned()..]).is_some()
+        // Rubrica: the line of a table's header is a lazy continuation, as it is of a paragraph
+        // (`parse_paragraph`): the table opens in the container.
+        if (!line_start.scan_space(4) && {
+            // After `scan_space`, which consumes the spaces it finds even when it fails.
+            let suffix = &self.text[self.text.len() - bytes.len() + line_start.bytes_scanned()..];
+            self.scan_paragraph_interrupt(suffix, current_container, tree_position)
+                && !self.is_lazy_table_header(suffix, current_container, tree_position)
+        }) || scan_blank_line(&bytes[line_start.bytes_scanned()..]).is_some()
         {
             None
         } else {
@@ -714,22 +715,7 @@ impl<'a, 'b> FirstPass<'a, 'b> {
                 // A table's header on a lazy line is part of the paragraph's container, as
                 // its text already is: the table is opened here, not after the containers
                 // are closed.
-                if !current_container
-                    && self.options.contains(Options::ENABLE_TABLES)
-                    && !scan_paragraph_interrupt_no_table(
-                        suffix,
-                        current_container,
-                        self.options.contains(Options::ENABLE_FOOTNOTES),
-                        self.options.contains(Options::ENABLE_DEFINITION_LIST),
-                        &self.tree,
-                        tree_position,
-                    )
-                    && self.scan_table_interrupt(suffix)
-                    // Rubrica: a header ending in a hard break opens no table, so it is not
-                    // opened here; the line cuts the paragraph and closes the containers, as
-                    // upstream's does.
-                    && !first_line_ends_in_hard_break(suffix)
-                {
+                if self.is_lazy_table_header(suffix, current_container, tree_position) {
                     if let Some(pos) = trailing_backslash_pos {
                         self.tree.append_text(pos, pos + 1, false);
                     }
@@ -2037,6 +2023,31 @@ impl<'a, 'b> FirstPass<'a, 'b> {
         } else {
             None
         }
+    }
+
+    /// Rubrica: whether `text`, the content of a line that does not match all the open
+    /// containers, is the header row of a table that opens in the containers it does match:
+    /// a table interrupts the paragraph, and the header's line continues it lazily. A header
+    /// ending in a hard break opens no table, so the line cuts the paragraph and closes the
+    /// containers, as upstream's does.
+    fn is_lazy_table_header(
+        &self,
+        text: &str,
+        current_container: bool,
+        tree_position: usize,
+    ) -> bool {
+        !current_container
+            && self.options.contains(Options::ENABLE_TABLES)
+            && !scan_paragraph_interrupt_no_table(
+                text,
+                current_container,
+                self.options.contains(Options::ENABLE_FOOTNOTES),
+                self.options.contains(Options::ENABLE_DEFINITION_LIST),
+                &self.tree,
+                tree_position,
+            )
+            && self.scan_table_interrupt(text)
+            && !first_line_ends_in_hard_break(text)
     }
 
     /// Checks whether we should break a paragraph on the given input.

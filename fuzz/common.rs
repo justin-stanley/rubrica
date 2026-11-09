@@ -38,15 +38,18 @@ fn columns(s: &str, from: usize, to: usize) -> usize {
 /// True when our GFM parse of `s` opens a table whose header row is a lazy continuation
 /// line: the source of the header's line, up to the table's start, holds fewer `>`
 /// markers than the block quotes enclosing the table, or is indented less than the content
-/// of a list item enclosing it whose first line is an earlier one.
+/// of a list item, or of a footnote definition (its marker's column and 4), enclosing it
+/// whose first line is an earlier one.
 ///
-/// Rubrica opens such a table inside the quote or item, as cmark-gfm does (the header row
-/// continues the container's paragraph lazily and the delimiter row is inside the
-/// container); upstream never lets a table interrupt a paragraph through a lazy line. The
-/// same documented deviation as `table_without_leading_pipe`, reached through a lazy line.
+/// Rubrica opens such a table inside the quote, item or footnote definition, as cmark-gfm
+/// does (the header row continues the container's paragraph lazily and the delimiter row is
+/// inside the container); upstream never lets a table interrupt a paragraph through a lazy
+/// line. The same documented deviation as `table_without_leading_pipe`, reached through a
+/// lazy line.
 pub fn table_with_lazy_header(s: &str) -> bool {
     // The open containers: `None` for a block quote, `Some((line start, content column))`
-    // for a list item, the column where its content starts on its first line.
+    // for a list item or a footnote definition, the column where its content starts on its
+    // first line.
     let mut open: Vec<Option<(usize, usize)>> = Vec::new();
     let line_start_of = |at: usize| s[..at].rfind(['\n', '\r']).map_or(0, |i| i + 1);
     let skip_blanks =
@@ -61,7 +64,13 @@ pub fn table_with_lazy_header(s: &str) -> bool {
                 let content = skip_blanks(marker + digits + 1);
                 open.push(Some((line, columns(s, line, content))));
             }
-            Event::End(TagEnd::BlockQuote(_) | TagEnd::Item) => {
+            Event::Start(Tag::FootnoteDefinition(_)) => {
+                // The content of a footnote definition is indented 4 columns from its `[`.
+                let line = line_start_of(range.start);
+                let marker = skip_blanks(range.start);
+                open.push(Some((line, columns(s, line, marker) + 4)));
+            }
+            Event::End(TagEnd::BlockQuote(_) | TagEnd::Item | TagEnd::FootnoteDefinition) => {
                 open.pop();
             }
             Event::Start(Tag::Table(_)) if !open.is_empty() => {

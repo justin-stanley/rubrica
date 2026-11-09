@@ -977,7 +977,12 @@ speed_findings() { # CI RELEASE RUN_TESTS CI_SH NEXTEST_TOML BINDGEN
         "key-workflow-file" => ".github/workflows/ci.yml",
       }.each { |k, needle| puts k if !needle.empty? && key.include?(needle) }
       paths = cw["path"].to_s.split("\n").map(&:strip)
-      puts "cache-paths" if (%w[rubrica-search_bg.wasm rubrica-search.js meta.rs].map { |f| "crates/rubrica-wasm-bundle/src/" + f } + ["target/wasm-bundle.sha256"]).all? { |p| paths.include?(p) }
+      puts "cache-paths" if (%w[rubrica-search_bg.wasm rubrica-search.js meta.rs].map { |f| "crates/rubrica-wasm-bundle/src/" + f } + [".wasm-bundle.sha256"]).all? { |p| paths.include?(p) }
+      # Nothing cached under target/: the post step of rust-cache prunes target/ before actions/cache
+      # saves (post steps run in reverse order), so a manifest there was never saved and every
+      # hit failed. The v2 key retires the entries saved without it.
+      puts "cache-paths-outside-target" if paths.none? { |p| p.start_with?("target/") }
+      puts "cache-key-v2" if key.start_with?("wasm-bundle-v2-")
       miss = "steps.#{id}.outputs.cache-hit != #{q}true#{q}"
       hit = "steps.#{id}.outputs.cache-hit == #{q}true#{q}"
       idx = lambda { |pred| ws.index { |s| pred.call(s) } }
@@ -1047,7 +1052,7 @@ speed_findings() { # CI RELEASE RUN_TESTS CI_SH NEXTEST_TOML BINDGEN
 speed_keys="cache-only-in-wasm release-no-cache cache-pinned cache-no-restore-keys
   key-wasm-crate key-bundle-crate key-bundle-js-excluded key-bundle-wasm-excluded key-bundle-meta-excluded
   key-cargo-lock key-cargo-toml key-toolchain-file key-bindgen-version key-build-script key-reproducible-script
-  key-workflow-file cache-paths cache-after-checkout skip-toolchain-on-hit skip-rust-cache-on-hit
+  key-workflow-file cache-paths cache-paths-outside-target cache-key-v2 cache-after-checkout skip-toolchain-on-hit skip-rust-cache-on-hit
   skip-install-on-hit skip-build-on-hit skip-embed-test-on-hit reproducible-on-miss manifest-written-on-miss
   checks-run-on-hit artifact-name artifact-paths upload-always
   nextest-version-pinned nextest-sha256-pinned rust-installs-nextest msrv-installs-nextest coverage-installs-nextest
@@ -1096,8 +1101,8 @@ speed_variant "an unpinned cache action" cache-pinned ci 'actions/cache@[0-9a-f]
 speed_variant "a cache that falls back to older keys" cache-no-restore-keys ci '(\n          key: wasm-bundle)' "\n          restore-keys: wasm-bundle-\\1"
 speed_variant "a cache in another job" cache-only-in-wasm ci '(  spec:\n(?:.*\n)*?    steps:\n)' "\\1      - uses: actions/cache@0000000000000000000000000000000000000000 # v0\n        with: { path: x, key: y }\n"
 speed_variant "a release that uses the cache" release-no-cache rel 'actions/upload-artifact@' 'actions/cache@'
-speed_variant "a cache without the manifest" cache-paths ci '            target/wasm-bundle\.sha256\n' ''
-speed_variant "a cache without meta.rs" cache-paths ci '            crates/rubrica-wasm-bundle/src/meta\.rs\n            target/' '            target/'
+speed_variant "a cache without the manifest" cache-paths ci '            \.wasm-bundle\.sha256\n' ''
+speed_variant "a cache without meta.rs" cache-paths ci '            crates/rubrica-wasm-bundle/src/meta\.rs\n            \.wasm-bundle' '            .wasm-bundle'
 # A hit skips the toolchain, the target and CLI, and the build; a miss runs them.
 speed_variant "a toolchain installed on a hit" skip-toolchain-on-hit ci '(dtolnay/rust-toolchain@[0-9a-f]{40} # stable\n)        if: [^\n]*\n' '\1'
 speed_variant "rust-cache restored on a hit" skip-rust-cache-on-hit ci '(Swatinem/rust-cache@[0-9a-f]{40} # v2\n)        if: [^\n]*\n' '\1'

@@ -4,6 +4,3 @@ contact_links:
   - name: Report a security vulnerability
     url: https://github.com/justin-stanley/rubrica/security/advisories/new
     about: Please do not open a public issue. Use GitHub's private vulnerability reporting; SECURITY.md says what to include and what to expect.
-  - name: Ask a question
-    url: https://github.com/justin-stanley/rubrica/discussions
-    about: How do I configure or run Rubrica? Ask in Discussions; the docs/ directory answers many questions already.

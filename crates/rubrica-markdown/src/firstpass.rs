@@ -725,6 +725,10 @@ impl<'a, 'b> FirstPass<'a, 'b> {
                         tree_position,
                     )
                     && self.scan_table_interrupt(suffix)
+                    // Rubrica: a header ending in a hard break opens no table, so it is not
+                    // opened here; the line cuts the paragraph and closes the containers, as
+                    // upstream's does.
+                    && !first_line_ends_in_hard_break(suffix)
                 {
                     if let Some(pos) = trailing_backslash_pos {
                         self.tree.append_text(pos, pos + 1, false);
@@ -2082,7 +2086,6 @@ impl<'a, 'b> FirstPass<'a, 'b> {
         // First line, count unescaped pipes.
         let mut pipes = 0;
         let mut next_line_ix = 0;
-        let mut eol_ix = 0;
         let mut bsesc = false;
         let mut last_pipe_ix = 0;
         for (i, &byte) in bytes.iter().enumerate() {
@@ -2096,7 +2099,6 @@ impl<'a, 'b> FirstPass<'a, 'b> {
                     last_pipe_ix = i;
                 }
                 b'\r' | b'\n' => {
-                    eol_ix = i;
                     next_line_ix = i + scan_eol(&bytes[i..]).unwrap();
                     break;
                 }
@@ -2112,7 +2114,7 @@ impl<'a, 'b> FirstPass<'a, 'b> {
         // Rubrica: a header line ending in an odd number of backslashes ends in a hard break,
         // which `parse_line` finds before any table, so no table opens on it. Only for a
         // header with no leading pipe: with one, upstream cuts the paragraph here too.
-        if !bytes.starts_with(b"|") && scan_rev_while(&bytes[..eol_ix], |b| b == b'\\') % 2 == 1 {
+        if !bytes.starts_with(b"|") && first_line_ends_in_hard_break(text) {
             return false;
         }
 
@@ -2219,6 +2221,17 @@ enum TableParseMode {
     Active,
     /// Inside a paragraph, not scanning for table headers.
     Disabled,
+}
+
+/// Rubrica: whether the first line of `text` ends in an odd number of backslashes, a hard
+/// break.
+fn first_line_ends_in_hard_break(text: &str) -> bool {
+    let bytes = text.as_bytes();
+    let eol_ix = bytes
+        .iter()
+        .position(|&b| b == b'\r' || b == b'\n')
+        .unwrap_or(bytes.len());
+    scan_rev_while(&bytes[..eol_ix], |b| b == b'\\') % 2 == 1
 }
 
 /// The number of header columns of a line with `pipes` unescaped pipes: a line without any

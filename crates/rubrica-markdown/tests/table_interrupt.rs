@@ -131,6 +131,25 @@ fn a_pipe_header_on_a_lazy_line_opens_the_table_inside_the_item() {
     );
 }
 
+/// A header on a lazy line that starts with a pipe and ends in a hard break (`|\`) opens no
+/// table, so the lazy-header deviation does not apply and the line is read as upstream
+/// reads it: it cuts the paragraph and, with no `>` or indent, closes the quote or the
+/// item. Before, the paragraph was cut but the line started a new paragraph inside the
+/// container (fuzz `differential`, issue 29).
+#[test]
+fn a_pipe_header_ending_in_a_hard_break_on_a_lazy_line_closes_the_container() {
+    let src = ">K|\n|\\\n>-|";
+    assert_eq!(shape(src), "<bq><p>K|</p></bq><p>|\\</p><bq><p>-|</p></bq>");
+    assert_eq!(ranges(src), upstream_ranges(src));
+    let src = "+ K|\n|\\\n  -|";
+    assert_eq!(ranges(src), upstream_ranges(src));
+    // An even run of backslashes ends no hard break: the table opens inside the quote.
+    assert_eq!(
+        shape(">K|\n|\\\\\n>-|"),
+        "<bq><p>K|</p><table><head><cell>\\</cell></head></table></bq>"
+    );
+}
+
 #[test]
 fn an_underline_is_the_header_when_a_one_cell_delimiter_row_follows() {
     assert_eq!(

@@ -93,7 +93,7 @@ done
 
 # 5. The job-level names of ci.yml.
 names=$(ruby -ryaml -e 'd = YAML.load_file(ARGV[0]); p d["jobs"].values.map { |j| j["name"] }.sort' "$wf/ci.yml")
-want_names='["MSRV", "Rust", "Secret scan", "cargo audit", "cargo deny", "coverage", "coverage-pages", "linear", "linear-arm64 (${{ matrix.shard }})", "no-js", "package", "spec", "wasm"]'
+want_names='["MSRV", "Rust", "Secret scan", "cargo audit", "cargo deny", "coverage", "coverage-pages", "linear", "linear-arm64 (${{ matrix.shard }})", "no-js", "package", "semver", "spec", "wasm"]'
 [ "$names" = "$want_names" ] || bad "ci.yml job names are $names, want $want_names"
 
 # 6. YAML parses.
@@ -870,19 +870,22 @@ done
 # CODEOWNERS; the label set (data only, applied by the maintainer); a pull request template
 # that names the gate and the sign-off. The Ruby text is matched literally.
 # shellcheck disable=SC2016
-for f in CODEOWNERS labels.yml ISSUE_TEMPLATE/bug.yml ISSUE_TEMPLATE/feature.yml ISSUE_TEMPLATE/config.yml; do
+for f in CODEOWNERS labels.yml ISSUE_TEMPLATE/bug.yml ISSUE_TEMPLATE/feature.yml ISSUE_TEMPLATE/question.yml ISSUE_TEMPLATE/config.yml; do
   [ -f "$gh_dir/$f" ] || bad "$gh_dir/$f is missing"
 done
 if [ -f "$gh_dir/ISSUE_TEMPLATE/config.yml" ] && [ -f "$gh_dir/labels.yml" ] \
-  && [ -f "$gh_dir/ISSUE_TEMPLATE/bug.yml" ] && [ -f "$gh_dir/ISSUE_TEMPLATE/feature.yml" ]; then
+  && [ -f "$gh_dir/ISSUE_TEMPLATE/bug.yml" ] && [ -f "$gh_dir/ISSUE_TEMPLATE/feature.yml" ] \
+  && [ -f "$gh_dir/ISSUE_TEMPLATE/question.yml" ]; then
   contrib_report=$(ruby -ryaml -e '
     dir = ARGV[0]
     c = YAML.load_file("#{dir}/ISSUE_TEMPLATE/config.yml")
     puts "blank-issues-off" if c["blank_issues_enabled"] == false
     links = c["contact_links"] || []
     puts "security-link" if links.any? { |l| l["url"] == "https://github.com/justin-stanley/rubrica/security/advisories/new" }
-    puts "question-link" if links.size >= 2 && links.all? { |l| l["name"] && l["url"] && l["about"] }
-    %w[bug feature].each do |f|
+    puts "links-complete" if links.all? { |l| l["name"] && l["url"] && l["about"] }
+    # Questions are issues (Discussions is off): no contact link may point at Discussions.
+    puts "no-discussions-link" if links.none? { |l| l["url"].to_s.include?("/discussions") }
+    %w[bug feature question].each do |f|
       d = YAML.load_file("#{dir}/ISSUE_TEMPLATE/#{f}.yml")
       ok = d["name"] && d["description"] && d["body"].is_a?(Array) && d["body"].any? { |b| b["type"] == "textarea" && (b["validations"] || {})["required"] }
       puts "#{f}-form" if ok
@@ -892,11 +895,12 @@ if [ -f "$gh_dir/ISSUE_TEMPLATE/config.yml" ] && [ -f "$gh_dir/labels.yml" ] \
     names = l.map { |x| x["name"] }
     puts "labels-valid" if l.all? { |x| x["name"] && x["color"].to_s =~ /\A[0-9a-f]{6}\z/ && x["description"].to_s.size.between?(1, 100) }
     puts "labels-unique" if names.uniq.size == names.size
-    want = %w[bug feature docs chore parser render site cli ci release wasm needs-triage] + ["good first issue", "help wanted", "dependencies"]
+    want = %w[bug feature question docs chore parser render site cli ci release wasm needs-triage] + ["good first issue", "help wanted", "dependencies"]
     puts "labels-set" if (want - names).empty?
-    puts "forms-use-known-labels" if %w[bug feature].all? { |f| Array(YAML.load_file("#{dir}/ISSUE_TEMPLATE/#{f}.yml")["labels"]).all? { |x| names.include?(x) } }
+    puts "forms-use-known-labels" if %w[bug feature question].all? { |f| Array(YAML.load_file("#{dir}/ISSUE_TEMPLATE/#{f}.yml")["labels"]).all? { |x| names.include?(x) } }
   ' "$gh_dir" 2>&1) || bad "the contribution files check failed: $contrib_report"
-  for k in blank-issues-off security-link question-link bug-form feature-form bug-labelled feature-labelled \
+  for k in blank-issues-off security-link links-complete no-discussions-link bug-form feature-form \
+    question-form bug-labelled feature-labelled question-labelled \
     labels-valid labels-unique labels-set forms-use-known-labels; do
     printf '%s\n' "$contrib_report" | grep -qxF "$k" || bad "the contribution files: $k does not hold"
   done
@@ -1131,6 +1135,82 @@ speed_variant "a profile that retries" ci-profile-no-retries nx 'retries = 0' 'r
 speed_variant "a profile that retries" no-retries nx 'retries = 0' 'retries = 2'
 speed_variant "a default profile that retries" no-retries nx '\[profile\.default\]\n' "[profile.default]\nretries = { count = 3, backoff = \"fixed\", delay = \"1s\" }\n"
 speed_variant "a retries flag" no-retries run ' --locked --profile ci\n' " --locked --profile ci --retries 2\n"
+
+# 12l. Semver: every pull request checks each published library crate against its latest
+# release on crates.io with cargo-semver-checks, pinned at an exact version and installed as the
+# release's pre-built tarball checked against its sha256 (the nextest pattern: a `cargo install`
+# compiles for minutes). `rubrica` is a binary with no library API and is not checked. The
+# bundle crate's sources are generated, so the job takes the `wasm` job's artifact as the other
+# jobs do. A baseline flag (--baseline-rev, --baseline-root, --baseline-version) would swap the
+# registry for something else, so none may appear.
+#
+# semver_findings prints one key per property that holds; the planted variants below must each
+# lose the key they break. The Ruby text is matched literally, so single quotes are intended.
+# shellcheck disable=SC2016
+semver_findings() { # CI
+  ruby -ryaml -e '
+    d = YAML.load(File.read(ARGV[0]))
+    jobs = d["jobs"] || {}
+    j = jobs["semver"]
+    exit 0 unless j.is_a?(Hash)
+    puts "semver-job"
+    puts "semver-job-name" if j["name"] == "semver"
+    on = d["on"] || d[true] || {}
+    puts "semver-on-pull-request" if on.is_a?(Hash) && on.key?("pull_request") && !j.key?("if")
+    steps = j["steps"] || []
+    run_of = lambda { |s| s["run"].to_s }
+    env = d["env"] || {}
+    puts "semver-version-pinned" if env["SEMVER_CHECKS_VERSION"].to_s =~ /\A\d+\.\d+\.\d+\z/
+    puts "semver-sha256-pinned" if env["SEMVER_CHECKS_SHA256"].to_s =~ /\A[0-9a-f]{64}\z/
+    inst = steps.index { |s| r = run_of.call(s); r.include?("cargo-semver-checks-${SEMVER_CHECKS_VERSION}") || r.include?("cargo-semver-checks-x86_64-unknown-linux-gnu.tar.gz") }
+    ir = inst ? run_of.call(steps[inst]) : ""
+    puts "semver-installs-checked" if inst && ir.include?("v${SEMVER_CHECKS_VERSION}") && ir =~ /echo "\$\{SEMVER_CHECKS_SHA256\}  [^"]+" \| sha256sum -c -/ && ir.include?("curl -sSfL")
+    puts "semver-needs-wasm" if Array(j["needs"]).include?("wasm")
+    dl = steps.index { |s| s["uses"].to_s =~ /\Aactions\/download-artifact@[0-9a-f]{40}\z/ && (s["with"] || {})["name"] == "wasm-bundle" && (s["with"] || {})["path"] == "crates/rubrica-wasm-bundle/src" }
+    puts "semver-downloads-bundle" if dl
+    checks = steps.each_index.select { |i| run_of.call(steps[i]) =~ /cargo semver-checks check-release / }
+    text = checks.map { |i| run_of.call(steps[i]) }.join("\n")
+    lines = text.lines.map(&:strip).reject { |l| l.start_with?("#") }
+    after = lambda { |i| i && !checks.empty? && checks.min > i }
+    puts "semver-checks-after-install-and-bundle" if after.call(inst) && after.call(dl)
+    %w[rubrica-markdown rubrica-render rubrica-site rubrica-wasm-bundle].each do |c|
+      puts "semver-checks-#{c}" if lines.any? { |l| l =~ /\Acargo semver-checks check-release -p #{c}( --locked)?\z/ }
+    end
+    puts "semver-skips-binary" if lines.none? { |l| l =~ /check-release .*\brubrica\b(\s|\z)/ }
+    puts "semver-registry-baseline" if !checks.empty? && text !~ /--baseline|--workspace|--manifest-path/
+  ' "$@"
+}
+semver_keys="semver-job semver-job-name semver-on-pull-request semver-version-pinned semver-sha256-pinned
+  semver-installs-checked semver-needs-wasm semver-downloads-bundle semver-checks-after-install-and-bundle
+  semver-checks-rubrica-markdown semver-checks-rubrica-render semver-checks-rubrica-site
+  semver-checks-rubrica-wasm-bundle semver-skips-binary semver-registry-baseline"
+semver_report=$(semver_findings "$wf/ci.yml" 2>&1) || bad "the semver check failed: $semver_report"
+for k in $semver_keys; do
+  printf '%s\n' "$semver_report" | grep -qxF "$k" || bad "semver: $k does not hold"
+done
+# semver_variant NAME KEY REGEX REPLACEMENT: ci.yml with every match of REGEX replaced loses KEY.
+semver_variant() {
+  local name=$1 key=$2 sv="$notes_tmp/semver" got
+  printf '%s\n' "$semver_report" | grep -qxF "$key" || return 0
+  mkdir -p "$sv"
+  cp "$wf/ci.yml" "$sv/ci.yml"; cp "$sv/ci.yml" "$sv/orig"
+  ruby -e 'File.write(ARGV[0], File.read(ARGV[0]).gsub(Regexp.new(ARGV[1]), ARGV[2].gsub("\\n", "\n")))' "$sv/ci.yml" "$3" "$4"
+  if cmp -s "$sv/orig" "$sv/ci.yml"; then bad "semver variant ($name): the edit changed nothing"; return; fi
+  got=$(semver_findings "$sv/ci.yml" 2>&1) || { bad "semver variant ($name): $got"; return; }
+  if printf '%s\n' "$got" | grep -qxF "$key"; then bad "semver variant ($name): still reports $key"; fi
+}
+for c in rubrica-markdown rubrica-render rubrica-site rubrica-wasm-bundle; do
+  semver_variant "a missing $c" "semver-checks-$c" "^          cargo semver-checks check-release -p $c\\n" ''
+done
+semver_variant "an unpinned semver-checks" semver-version-pinned 'SEMVER_CHECKS_VERSION: [0-9.]+' 'SEMVER_CHECKS_VERSION: latest'
+semver_variant "no semver-checks checksum" semver-sha256-pinned 'SEMVER_CHECKS_SHA256: [0-9a-f]{64}' 'SEMVER_CHECKS_SHA256: ""'
+semver_variant "an unchecked semver-checks download" semver-installs-checked '          echo "\$\{SEMVER_CHECKS_SHA256\}  [^\n]*sha256sum -c -\n' ''
+semver_variant "a binary crate checked" semver-skips-binary '(          cargo semver-checks check-release -p rubrica-site\n)' "\\1          cargo semver-checks check-release -p rubrica\n"
+semver_variant "a git baseline" semver-registry-baseline 'check-release -p rubrica-render' 'check-release --baseline-rev main -p rubrica-render'
+semver_variant "a semver job that skips pull requests" semver-on-pull-request '(  semver:\n    name: semver\n)' "\\1    if: github.event_name == 'push'\n"
+semver_variant "a semver job without the wasm job" semver-needs-wasm '(  semver:\n    name: semver\n)    needs: wasm\n' '\1'
+semver_variant "a semver job without the bundle" semver-downloads-bundle '(  semver:\n(?:.*\n)*?)      # The wasm job.s bundle[^\n]*\n      - uses: actions/download-artifact@[0-9a-f]{40} # v8\.0\.2\n        with:\n          name: wasm-bundle\n          path: crates/rubrica-wasm-bundle/src\n' '\1'
+semver_variant "a renamed semver job" semver-job-name '  semver:\n    name: semver\n' "  semver:\n    name: Semver\n"
 
 # 13. The Dockerfile's base image is pinned by digest, and it runs as a non-root user.
 [ -f Dockerfile ] || { bad "Dockerfile is missing"; exit 1; }

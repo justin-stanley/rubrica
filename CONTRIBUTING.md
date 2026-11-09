@@ -16,7 +16,7 @@ through a pull request.
   [SECURITY.md](SECURITY.md) says what to include.
 - **Features**: open an issue with the feature form first, so we can agree on the shape before
   you write it.
-- **Questions**: ask in Discussions; the [docs](docs/) answer many.
+- **Questions**: open an issue with the question form; the [docs](docs/) answer many.
 
 ## Sending a change
 
@@ -39,6 +39,7 @@ CI runs on every pull request, forks included, and all of these must pass before
 | `linear`, `linear-arm64 (1/4)`, `linear-arm64 (2/4)`, `linear-arm64 (3/4)`, `linear-arm64 (4/4)` | the parser, renderer and site build stay linear in their input, on x86_64 and arm64 (the arm64 job runs the shape matrices in four shards, `RUBRICA_LINEAR_SHARD=i/N`; unset runs them all) |
 | `no-js` | no JavaScript in the repository or in a built site |
 | `package` | every crate packs to its `PACKAGE-FILES` and builds on its own |
+| `semver` | each published library crate (`rubrica-markdown`, `rubrica-render`, `rubrica-site`, `rubrica-wasm-bundle`) is checked with `cargo semver-checks` against its latest release on crates.io: a breaking change to its public API needs the matching version bump (before 1.0, a minor bump) |
 | `wasm` | the search page's WebAssembly bundle builds, reproducibly, within its size budget |
 | `cargo deny`, `cargo audit` | licences, bans, sources and advisories |
 | `Secret scan` | no secret in the tree or the history |

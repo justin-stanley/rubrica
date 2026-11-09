@@ -173,6 +173,35 @@ fn a_header_on_a_lazy_line_after_a_definition_opens_the_table_inside_the_quote()
     assert_eq!(ranges(src), upstream_ranges(src));
 }
 
+/// A footnote definition is a container for the lazy-header deviation as a quote or an item
+/// is: the header row on a lazy line opens the table inside it (fuzz `differential`, issue
+/// 45). Upstream cuts the paragraph and closes the definition. Where the delimiter row is
+/// not indented into the definition, no table opens and the parse is upstream's.
+#[test]
+fn a_header_on_a_lazy_line_opens_the_table_inside_the_footnote_definition() {
+    assert_eq!(
+        shape("[^a]: x\n|y|\n    -|"),
+        "<FootnoteDefinition(Borrowed(\"a\"))><p>x</p><table><head><cell>y</cell></head></table>\
+         </FootnoteDefinition>"
+    );
+    let src = "[^a]: x\n|y|\n  -|";
+    assert_eq!(ranges(src), upstream_ranges(src));
+}
+
+/// The line after a definition, indented by less than 4 spaces, is read whole: its indent is
+/// part of what the table-interrupt check sees (a regression of the first fix for issue 45,
+/// found by fuzz `autolinks`).
+#[test]
+fn an_indented_line_after_a_definition_is_read_from_its_indent() {
+    for src in [
+        "[a]: /u\n  ```\nx\n  ```\n",
+        "[a]: /u\n  <table>\n",
+        "[a]: /u\n  > q\n",
+    ] {
+        assert_eq!(ranges(src), upstream_ranges(src), "{src:?}");
+    }
+}
+
 #[test]
 fn an_underline_is_the_header_when_a_one_cell_delimiter_row_follows() {
     assert_eq!(

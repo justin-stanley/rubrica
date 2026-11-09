@@ -23,9 +23,10 @@ fn workspace_root() -> PathBuf {
 /// `cargo package` cannot find them in the registry index, so each is patched to its path
 /// (the packaged manifest is unchanged: it still says `version = "0.1"`), and `--offline`
 /// keeps the test off the network.
-const SIBLINGS: [&str; 4] = [
+const SIBLINGS: [&str; 5] = [
     "rubrica-markdown",
     "rubrica-render",
+    "rubrica-diagram",
     "rubrica-wasm-bundle",
     "rubrica-site",
 ];
@@ -58,6 +59,7 @@ fn every_crate_packages_and_its_file_list_is_the_committed_one() {
     for krate in [
         "rubrica-markdown",
         "rubrica-render",
+        "rubrica-diagram",
         "rubrica-site",
         "rubrica",
     ] {

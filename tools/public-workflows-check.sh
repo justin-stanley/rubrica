@@ -250,7 +250,8 @@ rel_report=$(ruby -ryaml -e '
   puts "release-needs=" + Array(d["jobs"]["release"] && d["jobs"]["release"]["needs"]).sort.join(",")
 ' "$rel" 2>&1) || bad "release.yml: the permission check failed: $rel_report"
 want_report=$(printf '%s\n' 'tag-only' 'release-contents-write' 'release-environment' 'release-needs=build,image,publish-bin' \
-  'publish-markdown-environment' 'publish-render-environment' 'publish-wasm-bundle-environment' \
+  'publish-markdown-environment' 'publish-render-environment' 'publish-diagram-environment' \
+  'publish-wasm-bundle-environment' \
   'publish-site-environment' 'publish-bin-environment' | sort)
 got_report=$(printf '%s\n' "$rel_report" | sort)
 [ "$got_report" = "$want_report" ] || bad "release.yml jobs: [$(printf '%s' "$got_report" | tr '\n' ' ')], want [$(printf '%s' "$want_report" | tr '\n' ' ')]"
@@ -465,12 +466,22 @@ la_report=$(ruby -ryaml -e '
   t = (j["steps"] || []).map { |s| s["run"].to_s }.join("\n")
   puts "render" if t.include?("cargo test --locked -p rubrica-render --test linear --release")
   puts "markdown" if t.include?("cargo test --locked -p rubrica-markdown --test linear --release")
+  puts "diagram" if t.include?("cargo test --locked -p rubrica-diagram --test linear --release")
 ' "$wf/ci.yml" 2>&1) || bad "the linear-arm64 check failed: $la_report"
-for k in runner render markdown; do
+for k in runner render markdown diagram; do
   printf '%s\n' "$la_report" | grep -qxF "$k" || bad "ci.yml linear-arm64: $k does not hold"
 done
 grep_status -c 'ubuntu-24\.04-arm' "$wf/ci.yml"
 [ "$out" = 1 ] || bad "ci.yml has ubuntu-24.04-arm $out times, want 1"
+# ci.yml: the diagram crate's ratio test runs in release in the linear job too, with the
+# hosted-runner switch the job sets (checked below).
+lin_report=$(ruby -ryaml -e '
+  j = YAML.load_file(ARGV[0])["jobs"]["linear"]
+  exit 0 unless j
+  t = (j["steps"] || []).map { |s| s["run"].to_s }.join("\n")
+  puts "diagram" if t.include?("cargo test --locked -p rubrica-diagram --test linear --release")
+' "$wf/ci.yml" 2>&1) || bad "the linear check failed: $lin_report"
+printf '%s\n' "$lin_report" | grep -qxF diagram || bad "ci.yml linear: the diagram crate's release linear test does not run"
 
 # ci.yml: a job that shards the release linear matrices (RUBRICA_LINEAR_SHARD=i/N, read by
 # crates/rubrica-render/tests/linear.rs and crates/rubrica-markdown/tests/linear.rs) lists
@@ -558,8 +569,9 @@ grep_status -l 'RUBRICA_LINEAR_CI' scripts/ci.sh
 grep_status -c 'class Rubrica < Formula' docs/install.md
 [ "$out" = 1 ] || bad "docs/install.md has 'class Rubrica < Formula' $out times, want 1"
 
-# 12g. The crates.io publish chain. Five jobs in the order the crates depend on each other
-# (the bundle crate before rubrica-site, which depends on it), each needing only its
+# 12g. The crates.io publish chain. Six jobs, in the order rubrica-markdown, rubrica-render,
+# rubrica-diagram (which depends on nothing and follows the renderer to keep one linear chain),
+# rubrica-wasm-bundle, rubrica-site (which depends on the bundle crate) and rubrica, each needing only its
 # predecessor (and the job that makes its input), each under the `crates-io` environment
 # (the owner's approval), none run for a candidate tag, each skipping a crate that is already
 # on crates.io, packing it with scripts/package-check.sh, publishing with Trusted Publishing
@@ -575,7 +587,8 @@ chain_report=$(ruby -ryaml -e '
   chain = [
     ["publish-markdown", "rubrica-markdown", "FIRST_PUBLISH_RUBRICA_MARKDOWN", ["build", "image"]],
     ["publish-render", "rubrica-render", "FIRST_PUBLISH_RUBRICA_RENDER", ["publish-markdown"]],
-    ["publish-wasm-bundle", "rubrica-wasm-bundle", "FIRST_PUBLISH_RUBRICA_WASM_BUNDLE", ["publish-render", "wasm"]],
+    ["publish-diagram", "rubrica-diagram", "FIRST_PUBLISH_RUBRICA_DIAGRAM", ["publish-render"]],
+    ["publish-wasm-bundle", "rubrica-wasm-bundle", "FIRST_PUBLISH_RUBRICA_WASM_BUNDLE", ["publish-diagram", "wasm"]],
     ["publish-site", "rubrica-site", "FIRST_PUBLISH_RUBRICA_SITE", ["publish-wasm-bundle"]],
     ["publish-bin", "rubrica", "FIRST_PUBLISH_RUBRICA", ["publish-site"]],
   ]
@@ -628,7 +641,7 @@ chain_report=$(ruby -ryaml -e '
 ' "$rel" "$wf/ci.yml" 2>&1) || bad "the publish chain check failed: $chain_report"
 chain_keys="chain-order publish-only-in-chain environment-only-in-chain release-after-chain release-runs-for-rc
   bundle-downloads-attested bundle-same-bytes ci-package-needs-wasm ci-package-downloads ci-package-all ci-package-no-publish"
-for j in publish-markdown publish-render publish-wasm-bundle publish-site publish-bin; do
+for j in publish-markdown publish-render publish-diagram publish-wasm-bundle publish-site publish-bin; do
   for k in needs environment permissions no-rc published-check package-check oidc first-token publish verify-download attests; do
     chain_keys="$chain_keys $j-$k"
   done
@@ -640,7 +653,7 @@ done
 # reports `publish` as null, not `[]`), and every other workspace crate is not (rubrica-wasm
 # is built into the bundle crate, never published itself).
 pub_report=$(cargo metadata --no-deps --locked --format-version 1 | ruby -rjson -e '
-  chain = %w[rubrica-markdown rubrica-render rubrica-wasm-bundle rubrica-site rubrica]
+  chain = %w[rubrica-markdown rubrica-render rubrica-diagram rubrica-wasm-bundle rubrica-site rubrica]
   pk = JSON.parse(STDIN.read)["packages"]
   pk.each do |p|
     open = p["publish"].nil?
@@ -661,12 +674,12 @@ pub_report=$(cargo metadata --no-deps --locked --format-version 1 | ruby -rjson 
 # release being prepared.
 base=$(sed -n 's/^version = "\([0-9]*\.[0-9]*\.[0-9]*\)\(-.*\)\{0,1\}"$/\1/p' Cargo.toml | head -1)
 [ -n "$base" ] || bad "Cargo.toml: no workspace version"
-for k in rubrica-markdown rubrica-render rubrica-site rubrica-wasm-bundle; do
+for k in rubrica-markdown rubrica-render rubrica-diagram rubrica-site rubrica-wasm-bundle; do
   grep_status -cE "^$k = \{ path = \"crates/$k\", version = \">=$base-0, <[0-9]+\.[0-9]+\.[0-9]+\"" Cargo.toml
   [ "$out" = 1 ] || bad "Cargo.toml: $k's requirement does not start at $base-0, so a candidate tag (v$base-rc.N) cannot resolve it"
 done
 grep_status -c 'environment: crates-io' "$rel"
-[ "$out" = 5 ] || bad "release.yml has 'environment: crates-io' $out times, want 5 (one per published crate)"
+[ "$out" = 6 ] || bad "release.yml has 'environment: crates-io' $out times, want 6 (one per published crate)"
 # The shell script behind the jobs and the CI job exists and is executable.
 [ -x scripts/package-check.sh ] || bad "scripts/package-check.sh is missing or not executable"
 # Only release.yml publishes.

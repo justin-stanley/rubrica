@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "crates/rubrica-markdown",
+    "crates/rubrica-diagram",
     "crates/rubrica-render",
     "crates/rubrica-site",
     "crates/rubrica",

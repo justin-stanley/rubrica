@@ -185,6 +185,13 @@ grep_status -nE 'tool: cargo-audit@(\$\{\{ env\.CARGO_AUDIT_VERSION \}\}|[0-9]+\
 grep_status -nE '^  CARGO_AUDIT_VERSION: [0-9]+\.[0-9]+\.[0-9]+$' "$wf/fuzz.yml"
 [ "$rc" -eq 0 ] || bad "fuzz.yml has no exact CARGO_AUDIT_VERSION"
 
+# 9d. The width generator's own lock file (tools/gen-font-widths is its own workspace) is
+# audited by ci.yml's audit job, and dependabot watches it.
+grep_status -nE 'cargo audit .*--file tools/gen-font-widths/Cargo\.lock' "$wf/ci.yml"
+[ "$rc" -eq 0 ] || bad "ci.yml does not run cargo audit on tools/gen-font-widths/Cargo.lock"
+grep_status -nE 'directory: "/tools/gen-font-widths"' "$gh_dir/dependabot.yml"
+[ "$rc" -eq 0 ] || bad "dependabot.yml has no cargo entry for /tools/gen-font-widths"
+
 # 10. The fuzz budget is shared out: the time per target is the budget divided by the number
 # of targets, so the whole run fits within timeout-minutes.
 grep_status -nE 'per_target=\$\(\( *FUZZ_BUDGET */ *n *\)\)' "$wf/fuzz.yml"

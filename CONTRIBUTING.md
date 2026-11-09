@@ -16,7 +16,7 @@ through a pull request.
   [SECURITY.md](SECURITY.md) says what to include.
 - **Features**: open an issue with the feature form first, so we can agree on the shape before
   you write it.
-- **Questions**: ask in Discussions; the [docs](docs/) answer many.
+- **Questions**: open an issue with the question form; the [docs](docs/) answer many.
 
 ## Sending a change
 

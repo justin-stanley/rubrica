@@ -79,7 +79,7 @@ jobs:
       # added to that toolchain, the one cargo runs here.
       - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
         if: steps.wasm-cache.outputs.cache-hit != 'true'
-      - uses: Swatinem/rust-cache@c8037a86dde8214a8310e9f54a8fc61ab362aa31 # v2
+      - uses: Swatinem/rust-cache@eedcf2fb1c22f010a0eb66b92f378c110977f266 # v2
         if: steps.wasm-cache.outputs.cache-hit != 'true'
       - name: The wasm target and the wasm-bindgen CLI, pinned
         if: steps.wasm-cache.outputs.cache-hit != 'true'
@@ -133,7 +133,7 @@ jobs:
           path: crates/rubrica-wasm-bundle/src
       # No `toolchain:` input: the action honours rust-toolchain.toml (1.97.0).
       - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
-      - uses: Swatinem/rust-cache@c8037a86dde8214a8310e9f54a8fc61ab362aa31 # v2
+      - uses: Swatinem/rust-cache@eedcf2fb1c22f010a0eb66b92f378c110977f266 # v2
       # tools/public-workflows-check.sh (run by the gate) lints the workflows with actionlint.
       - name: Install actionlint
         run: |
@@ -187,7 +187,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
         with:
           toolchain: "1.94"
-      - uses: Swatinem/rust-cache@c8037a86dde8214a8310e9f54a8fc61ab362aa31 # v2
+      - uses: Swatinem/rust-cache@eedcf2fb1c22f010a0eb66b92f378c110977f266 # v2
       # The release binary is not built with the MSRV: it asks cargo (the 1.94 one here) to
       # build the tests, then runs the binaries cargo built.
       - name: Install cargo-nextest
@@ -214,7 +214,7 @@ jobs:
         with:
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
-      - uses: Swatinem/rust-cache@c8037a86dde8214a8310e9f54a8fc61ab362aa31 # v2
+      - uses: Swatinem/rust-cache@eedcf2fb1c22f010a0eb66b92f378c110977f266 # v2
       - name: CommonMark and GFM spec examples
         run: cargo test --locked -p rubrica-markdown --test spec
 
@@ -243,7 +243,7 @@ jobs:
       # No `toolchain:` input: the action honours rust-toolchain.toml (1.97.0). The component
       # is added to that toolchain, the one cargo runs here.
       - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
-      - uses: Swatinem/rust-cache@c8037a86dde8214a8310e9f54a8fc61ab362aa31 # v2
+      - uses: Swatinem/rust-cache@eedcf2fb1c22f010a0eb66b92f378c110977f266 # v2
       - name: llvm-tools and cargo-llvm-cov, pinned
         run: |
           set -euo pipefail
@@ -335,7 +335,7 @@ jobs:
           name: wasm-bundle
           path: crates/rubrica-wasm-bundle/src
       - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
-      - uses: Swatinem/rust-cache@c8037a86dde8214a8310e9f54a8fc61ab362aa31 # v2
+      - uses: Swatinem/rust-cache@eedcf2fb1c22f010a0eb66b92f378c110977f266 # v2
       - name: Site build time is linear
         run: cargo test --locked -p rubrica-site --test linear --release
       - name: Parser time is linear
@@ -375,7 +375,7 @@ jobs:
         with:
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
-      - uses: Swatinem/rust-cache@c8037a86dde8214a8310e9f54a8fc61ab362aa31 # v2
+      - uses: Swatinem/rust-cache@eedcf2fb1c22f010a0eb66b92f378c110977f266 # v2
       - name: Renderer and parser time are linear
         run: |
           set -euo pipefail
@@ -397,7 +397,7 @@ jobs:
           name: wasm-bundle
           path: crates/rubrica-wasm-bundle/src
       - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
-      - uses: Swatinem/rust-cache@c8037a86dde8214a8310e9f54a8fc61ab362aa31 # v2
+      - uses: Swatinem/rust-cache@eedcf2fb1c22f010a0eb66b92f378c110977f266 # v2
       - name: No JavaScript in the repository or the output
         run: |
           set -euo pipefail
@@ -423,7 +423,7 @@ jobs:
           name: wasm-bundle
           path: crates/rubrica-wasm-bundle/src
       - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
-      - uses: Swatinem/rust-cache@c8037a86dde8214a8310e9f54a8fc61ab362aa31 # v2
+      - uses: Swatinem/rust-cache@eedcf2fb1c22f010a0eb66b92f378c110977f266 # v2
       - name: Every crate packs to its PACKAGE-FILES and builds on its own
         run: |
           set -euo pipefail
@@ -454,7 +454,7 @@ jobs:
           name: wasm-bundle
           path: crates/rubrica-wasm-bundle/src
       - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
-      - uses: Swatinem/rust-cache@c8037a86dde8214a8310e9f54a8fc61ab362aa31 # v2
+      - uses: Swatinem/rust-cache@eedcf2fb1c22f010a0eb66b92f378c110977f266 # v2
       - name: Install cargo-semver-checks
         run: |
           set -euo pipefail
@@ -481,7 +481,7 @@ jobs:
         with:
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
-      - uses: taiki-e/install-action@3a3daafd3b7f23b8f65d9f5ba2db203fb59b79e2 # v2
+      - uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2
         with:
           tool: cargo-deny@${{ env.CARGO_DENY_VERSION }}
       - run: cargo deny check bans licenses sources
@@ -494,7 +494,7 @@ jobs:
         with:
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
-      - uses: taiki-e/install-action@3a3daafd3b7f23b8f65d9f5ba2db203fb59b79e2 # v2
+      - uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2
         with:
           tool: cargo-audit@${{ env.CARGO_AUDIT_VERSION }}
       # bincode 1.x via syntect's dump-load: the syntax dump is a build-time embedded blob, never input

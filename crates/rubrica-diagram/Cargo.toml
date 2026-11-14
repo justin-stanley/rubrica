@@ -13,3 +13,6 @@ categories = ["visualization", "text-processing"]
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+html5ever.workspace = true

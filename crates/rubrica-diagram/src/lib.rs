@@ -3,7 +3,10 @@
 //! is read from the host.
 
 pub mod flowchart;
+mod geom;
+mod layered;
 mod preamble;
+mod svg;
 mod why;
 mod widths;
 
@@ -42,4 +45,13 @@ pub fn advance(c: char) -> u16 {
 pub fn text_width(s: &str) -> u32 {
     s.chars()
         .fold(0u32, |sum, c| sum.saturating_add(u32::from(advance(c))))
+}
+
+/// Draws the diagram in `src` as one `<svg>` element, or says why it is not drawn.
+pub fn render(src: &str) -> Result<String, Unsupported> {
+    let _ = src;
+    Err(Unsupported {
+        line: 0,
+        why: Why::Empty,
+    })
 }

@@ -4,10 +4,14 @@ Cargo.toml
 Cargo.toml.orig
 PACKAGE-FILES
 README.md
+src/flowchart/draw.rs
 src/flowchart/mod.rs
 src/flowchart/parse.rs
+src/geom.rs
+src/layered.rs
 src/lib.rs
 src/preamble.rs
+src/svg.rs
 src/why.rs
 src/widths.rs
 tests/fixtures/flowchart/01-two-nodes.mmd
@@ -66,8 +70,10 @@ tests/fixtures/rejected/subgraph-twice.mmd
 tests/fixtures/rejected/two-subgraphs.mmd
 tests/fixtures/rejected/unclosed-subgraph.mmd
 tests/fixtures/rejected/unterminated-pipe.mmd
+tests/flowchart_layout.rs
 tests/flowchart_more.rs
 tests/flowchart_parse.rs
+tests/golden.rs
 tests/linear.rs
 tests/preamble.rs
 tests/widths.rs

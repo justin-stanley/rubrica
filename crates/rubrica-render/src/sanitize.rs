@@ -610,6 +610,105 @@ pub const HL_CLASSES: [&str; 10] = [
     "hl-meta",
 ];
 
+/// The elements a diagram's SVG may hold.
+pub const SVG_ELEMENTS: [&str; 7] = ["svg", "g", "path", "rect", "text", "title", "desc"];
+
+/// Per element: the attributes it may carry (lowercase, as the tokenizer gives them).
+pub const SVG_ATTRIBUTES: [(&str, &[&str]); 7] = [
+    (
+        "svg",
+        &[
+            "role",
+            "viewbox",
+            "width",
+            "height",
+            "class",
+            "font-family",
+            "font-size",
+        ],
+    ),
+    ("g", &["class"]),
+    ("path", &["class", "d"]),
+    ("rect", &["class", "x", "y", "width", "height", "rx", "ry"]),
+    ("text", &["class", "x", "y", "text-anchor"]),
+    ("title", &[]),
+    ("desc", &[]),
+];
+
+/// Per element: the classes its `class` may name (one or two of them; the `svg`'s is `rd`
+/// and exactly one of the other three, in that order).
+pub const SVG_CLASSES: [(&str, &[&str]); 5] = [
+    ("svg", &["rd", "rd-flowchart", "rd-sequence", "rd-state"]),
+    (
+        "g",
+        &[
+            "rd-clusters",
+            "rd-edges",
+            "rd-nodes",
+            "rd-labels",
+            "rd-node",
+            "rd-cluster",
+            "rd-edge",
+            "rd-edge-solid",
+            "rd-edge-dotted",
+            "rd-edge-thick",
+            "rd-edge-label",
+            "rd-actors",
+            "rd-actor",
+            "rd-lifelines",
+            "rd-activations",
+            "rd-messages",
+            "rd-notes",
+            "rd-note",
+            "rd-frames",
+            "rd-frame",
+        ],
+    ),
+    (
+        "rect",
+        &[
+            "rd-shape",
+            "rd-label-bg",
+            "rd-cluster-box",
+            "rd-actor-box",
+            "rd-activation",
+            "rd-note-box",
+            "rd-frame-box",
+            "rd-frame-tag",
+            "rd-start",
+            "rd-end-ring",
+            "rd-end-dot",
+        ],
+    ),
+    (
+        "path",
+        &[
+            "rd-shape",
+            "rd-shape-line",
+            "rd-line",
+            "rd-arrow",
+            "rd-lifeline",
+            "rd-frame-divider",
+        ],
+    ),
+    (
+        "text",
+        &[
+            "rd-text",
+            "rd-cluster-title",
+            "rd-frame-label",
+            "rd-frame-text",
+        ],
+    ),
+];
+
+/// Whether `svg` is exactly one `<svg>` element in the diagram vocabulary. The `Err` is the
+/// first reason, for the finding (names lowercase, as tokenized).
+pub fn svg_allowed(svg: &str) -> Result<(), String> {
+    let _ = svg;
+    Err("stub".into())
+}
+
 /// The final pass's configuration: what the writer and Rubrica write, nothing
 /// else.
 static FINAL: LazyLock<ammonia::Builder<'static>> = LazyLock::new(|| {
@@ -716,6 +815,13 @@ static FINAL: LazyLock<ammonia::Builder<'static>> = LazyLock::new(|| {
 pub(crate) fn clean(html: &str) -> (String, Vec<DroppedAttribute>) {
     let (html, dropped) = bound_serializer_cost(html);
     (FINAL.clean(&html).to_string(), dropped)
+}
+
+/// The final pass alone, for tests of what it keeps: `clean`'s output without the dropped
+/// attributes. Not for rendering: `render` is the one path.
+#[doc(hidden)]
+pub fn final_pass(html: &str) -> String {
+    clean(html).0
 }
 
 #[cfg(test)]
@@ -1198,6 +1304,164 @@ mod tests {
         let html = "<p>a &amp; b</p><a href=\"/u?a=1&amp;b=2\" title=\"t\">l</a>";
         assert!(
             matches!(bound_serializer_cost(html), (Cow::Borrowed(h), d) if h == html && d.is_empty())
+        );
+    }
+
+    /// A diagram in the vocabulary: every element, every attribute, text that needs escaping.
+    const S: &str = concat!(
+        "<svg role=\"img\" viewBox=\"0 0 10.00 10.00\" width=\"10.00\" height=\"10.00\" ",
+        "class=\"rd rd-flowchart\" font-family=\"Inter, sans-serif\" font-size=\"14\">",
+        "<title>t</title><desc>a --&gt; b</desc><g class=\"rd-nodes\"><g class=\"rd-node\">",
+        "<rect class=\"rd-shape\" x=\"1.00\" y=\"1.00\" width=\"5.00\" height=\"5.00\" ",
+        "rx=\"5.00\" ry=\"5.00\"></rect><path class=\"rd-shape-line\" d=\"M1.00 1.00 V5.00 ",
+        "Z\"></path><text class=\"rd-text\" x=\"2.00\" y=\"3.00\" text-anchor=\"middle\">",
+        "a &amp; b</text></g></g></svg>"
+    );
+
+    /// S with `x` inside its inner `g`, after the `text`.
+    fn inner(x: &str) -> String {
+        S.replacen("</text></g>", &format!("</text>{x}</g>"), 1)
+    }
+
+    #[test]
+    fn the_final_pass_keeps_a_diagram_byte_for_byte() {
+        let html = format!("<figure class=\"diagram\">{S}</figure>");
+        assert_eq!(final_pass(&html), html);
+    }
+
+    #[test]
+    fn the_final_pass_strips_svg_outside_the_vocabulary() {
+        let hostile = inner(concat!(
+            "<foreignObject><p>x</p></foreignObject>",
+            "<script>alert(1)</script>",
+            "<style>*{}</style>",
+            "<use href=\"#a\"></use>",
+            "<image href=\"x\"></image>",
+            "<animate attributeName=\"x\"></animate>",
+            "<set to=\"x\"></set>",
+            "<circle r=\"1\"></circle>",
+        ))
+        .replace(
+            "<rect class=\"rd-shape\" x=\"1.00\"",
+            "<rect class=\"rd-shape evil\" x=\"1e9\" style=\"fill:red\"",
+        )
+        .replace("<svg role", "<svg onload=\"x\" role")
+        .replace(
+            "<g class=\"rd-node\">",
+            "<g class=\"rd-node\" transform=\"scale(2)\">",
+        );
+        let out = final_pass(&format!("<figure class=\"x\">{hostile}</figure>"));
+        for gone in [
+            "foreignobject",
+            "foreignObject",
+            "<script",
+            "<style",
+            "<use",
+            "<image",
+            "<animate",
+            "<set",
+            "<circle",
+            "style=",
+            "onload",
+            "transform",
+            "1e9",
+            "evil",
+            "class=\"x\"",
+        ] {
+            assert!(!out.contains(gone), "{gone} in {out}");
+        }
+        assert!(out.contains("<rect class=\"rd-shape\""), "{out}");
+        assert!(out.contains("<figure>"), "{out}");
+    }
+
+    #[test]
+    fn an_svg_link_survives_the_final_pass_and_is_refused_by_the_check() {
+        // ammonia allows `a` by its local name, not its namespace: an SVG `a` inside an
+        // allowed `svg` keeps its `href`. Only the check before the writer refuses it.
+        let svg = inner("<a href=\"/x\">x</a>");
+        let out = final_pass(&format!("<figure class=\"diagram\">{svg}</figure>"));
+        assert!(out.contains("<a href=\"/x\">"), "{out}");
+        assert_eq!(svg_allowed(&svg), Err("`<a>` is not allowed".to_string()));
+    }
+
+    /// ammonia's mutation XSS (RUSTSEC-2026-0533) needs a MathML text integration point or an SVG
+    /// `foreignObject` together with a raw-text element; the vocabulary admits SVG `title`,
+    /// so neither layer may ever admit the first.
+    #[test]
+    fn no_mathml_element_or_foreign_object_is_ever_admitted() {
+        const MATHML: [&str; 34] = [
+            "math",
+            "maction",
+            "annotation",
+            "annotation-xml",
+            "menclose",
+            "merror",
+            "mfenced",
+            "mfrac",
+            "mglyph",
+            "mi",
+            "mlabeledtr",
+            "mmultiscripts",
+            "mn",
+            "mo",
+            "mover",
+            "mpadded",
+            "mphantom",
+            "mprescripts",
+            "mroot",
+            "mrow",
+            "ms",
+            "mspace",
+            "msqrt",
+            "mstyle",
+            "msub",
+            "msubsup",
+            "msup",
+            "mtable",
+            "mtd",
+            "mtext",
+            "mtr",
+            "munder",
+            "munderover",
+            "semantics",
+        ];
+        let tags = FINAL.clone_tags();
+        let classes = FINAL.clone_allowed_classes();
+        let attributes = FINAL.clone_tag_attributes();
+        for name in MATHML.iter().chain(&["foreignObject", "foreignobject"]) {
+            assert!(!SVG_ELEMENTS.contains(name), "SVG_ELEMENTS has {name}");
+            assert!(
+                !SVG_ATTRIBUTES.iter().any(|(e, _)| e == name),
+                "SVG_ATTRIBUTES has {name}"
+            );
+            assert!(
+                !SVG_CLASSES.iter().any(|(e, _)| e == name),
+                "SVG_CLASSES has {name}"
+            );
+            assert!(!tags.contains(name), "the final pass allows <{name}>");
+            assert!(
+                !classes.contains_key(name),
+                "the final pass has classes for <{name}>"
+            );
+            assert!(
+                !attributes.contains_key(name),
+                "the final pass has attributes for <{name}>"
+            );
+        }
+        let out = final_pass(&format!(
+            "<figure class=\"diagram\">{}</figure>",
+            inner("<foreignObject><p>x</p></foreignObject><math><mi>y</mi><mtext>z</mtext></math>")
+        ));
+        for gone in ["foreign", "<math", "<mi", "<mtext"] {
+            assert!(!out.contains(gone), "{gone} in {out}");
+        }
+        assert_eq!(
+            svg_allowed(&inner("<foreignObject></foreignObject>")),
+            Err("`<foreignobject>` is not allowed".to_string())
+        );
+        assert_eq!(
+            svg_allowed(&inner("<math><mi>x</mi></math>")),
+            Err("`<math>` is not allowed".to_string())
         );
     }
 }

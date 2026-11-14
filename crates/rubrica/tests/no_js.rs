@@ -140,6 +140,8 @@ struct Audit<'a> {
     loaders: Cell<usize>,
     /// A loader tag was just opened: the next token must be its end tag.
     open_loader: Cell<bool>,
+    /// How many `svg` elements are open.
+    svg_depth: Cell<usize>,
 }
 
 /// Whether a script tag is exactly the loader's: `type="module"` and `src` the loader's path,
@@ -174,9 +176,15 @@ impl TokenSink for Audit<'_> {
             return TokenSinkResult::Continue;
         };
         if tag.kind != TagKind::StartTag {
+            if &*tag.name == "svg" {
+                self.svg_depth.set(self.svg_depth.get().saturating_sub(1));
+            }
             return TokenSinkResult::Continue;
         }
         let name = &*tag.name;
+        if name == "svg" && !tag.self_closing {
+            self.svg_depth.set(self.svg_depth.get() + 1);
+        }
         let mut problems = self.problems.borrow_mut();
         if name == "script" {
             if self.loader_allowed && self.html && is_loader_tag(&tag) {
@@ -258,6 +266,7 @@ fn audit_markup(
             csp: RefCell::default(),
             loaders: Cell::new(0),
             open_loader: Cell::new(false),
+            svg_depth: Cell::new(0),
         },
         TokenizerOpts::default(),
     );
@@ -1215,4 +1224,85 @@ fn a_planted_second_script_tag_or_a_changed_loader_is_caught() {
             "{name}: no problem holds {needle:?}: {problems:#?}"
         );
     }
+}
+
+// ---------- inline SVG: the diagram vocabulary ----------
+
+/// A diagram in the vocabulary: every element, every attribute, text that needs escaping.
+const DIAGRAM: &str = concat!(
+    "<svg role=\"img\" viewBox=\"0 0 10.00 10.00\" width=\"10.00\" height=\"10.00\" ",
+    "class=\"rd rd-flowchart\" font-family=\"Inter, sans-serif\" font-size=\"14\">",
+    "<title>t</title><desc>a --&gt; b</desc><g class=\"rd-nodes\"><g class=\"rd-node\">",
+    "<rect class=\"rd-shape\" x=\"1.00\" y=\"1.00\" width=\"5.00\" height=\"5.00\" ",
+    "rx=\"5.00\" ry=\"5.00\"></rect><path class=\"rd-shape-line\" d=\"M1.00 1.00 V5.00 ",
+    "Z\"></path><text class=\"rd-text\" x=\"2.00\" y=\"3.00\" text-anchor=\"middle\">",
+    "a &amp; b</text></g></g></svg>"
+);
+
+/// The theme's logomark, as the page template inlines it.
+const LOGOMARK: &str = "<svg viewBox=\"7 3 21 26\" aria-hidden=\"true\" focusable=\"false\"><path d=\"M15 4v14a7 7 0 0 1 0-14z\"/><path d=\"M15 4h12v3h-2v21h-3V7h-4v21h-3z\"/></svg>";
+
+/// The auditor's problems for one page, `p.html`, with the policy meta and `body`.
+fn svg_page_problems(body: &str) -> Vec<String> {
+    let html = format!(
+        "<!doctype html><html><head><meta http-equiv=\"Content-Security-Policy\" content=\"{CSP_NO_SCRIPT}\"></head><body>{body}</body></html>"
+    );
+    audit_files([("p.html", html.as_bytes())])
+}
+
+#[test]
+fn an_svg_outside_the_diagram_vocabulary_is_flagged() {
+    let inner = |x: &str| DIAGRAM.replacen("</text></g>", &format!("</text>{x}</g>"), 1);
+    let cases = [
+        (
+            inner("<foreignObject></foreignObject>"),
+            "<foreignobject> inside an inline svg in p.html",
+        ),
+        (
+            inner("<a href=\"/x\">x</a>"),
+            "<a> inside an inline svg in p.html",
+        ),
+        (
+            inner("<use href=\"#a\"></use>"),
+            "<use> inside an inline svg in p.html",
+        ),
+        (
+            inner("<image href=\"x\"></image>"),
+            "<image> inside an inline svg in p.html",
+        ),
+        (
+            inner("<circle r=\"1\"></circle>"),
+            "<circle> inside an inline svg in p.html",
+        ),
+        (
+            DIAGRAM.replacen(" ry=\"5.00\"", " ry=\"5.00\" style=\"fill:red\"", 1),
+            "style attribute on <rect> inside an inline svg in p.html",
+        ),
+        (
+            DIAGRAM.replacen(
+                "<g class=\"rd-node\">",
+                "<g class=\"rd-node\" href=\"/x\">",
+                1,
+            ),
+            "href attribute on <g> inside an inline svg in p.html",
+        ),
+    ];
+    let mut missing = Vec::new();
+    for (body, want) in &cases {
+        assert_ne!(body, DIAGRAM, "the case changed nothing: {want}");
+        let problems = svg_page_problems(body);
+        eprintln!("{want}: {problems:?}");
+        if !problems.iter().any(|p| p == want) {
+            missing.push(format!("problems contains {want:?} (got {problems:?})"));
+        }
+    }
+    assert!(missing.is_empty(), "{}", missing.join("\n"));
+}
+
+#[test]
+fn the_logomark_and_a_diagram_svg_pass_the_audit() {
+    let problems = svg_page_problems(&format!(
+        "<header><a href=\"/\">{LOGOMARK}Wiki</a></header><figure class=\"diagram\">{DIAGRAM}</figure>"
+    ));
+    assert!(problems.is_empty(), "{problems:#?}");
 }

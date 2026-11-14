@@ -40,6 +40,8 @@ serde.workspace = true
 serde_json.workspace = true
 # The build tests read the HTML they write with a real tokenizer.
 html5ever.workspace = true
+# The SVG corpus test draws the diagram crate's flowcharts.
+rubrica-diagram.workspace = true
 
 [lints]
 workspace = true

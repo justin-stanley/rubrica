@@ -462,3 +462,17 @@ fn raw_html_cannot_set_an_hl_class() {
     let out = html("```rust\n<span class=\"hl-keyword\">x</span>\n```\n");
     assert!(!out.contains("<span"), "{out}");
 }
+
+#[test]
+fn raw_html_cannot_open_an_svg() {
+    // The final pass admits the diagram vocabulary; only Rubrica's renderer may write it.
+    for md in [
+        "<svg role=\"img\"><rect x=\"1.00\"></rect></svg>\n",
+        "a <svg><g></g></svg> b\n",
+    ] {
+        let out = html(md);
+        for bad in ["<svg", "<rect", "<g"] {
+            assert!(!out.contains(bad), "{md:?}: {bad} in {out}");
+        }
+    }
+}

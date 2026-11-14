@@ -1908,6 +1908,9 @@ dependencies = [
 [[package]]
 name = "rubrica-diagram"
 version = "0.1.0"
+dependencies = [
+ "html5ever",
+]
 
 [[package]]
 name = "rubrica-markdown"

@@ -458,7 +458,8 @@ grep_status -c 'ubuntu-24\.04-arm' "$rel"
 grep_status -c 'imagetools create' "$rel"
 [ "$out" = 1 ] || bad "release.yml has 'imagetools create' $out times, want 1"
 # ci.yml: the parser and renderer ratio tests also run natively on an arm64 runner, with no
-# emulation.
+# emulation, and the diagram corpus is checked byte for byte there: one step, in the first
+# shard only (the corpus does not depend on the shard, so four runs would prove nothing more).
 la_report=$(ruby -ryaml -e '
   j = YAML.load_file(ARGV[0])["jobs"]["linear-arm64"]
   exit 0 unless j
@@ -467,8 +468,10 @@ la_report=$(ruby -ryaml -e '
   puts "render" if t.include?("cargo test --locked -p rubrica-render --test linear --release")
   puts "markdown" if t.include?("cargo test --locked -p rubrica-markdown --test linear --release")
   puts "diagram" if t.include?("cargo test --locked -p rubrica-diagram --test linear --release")
+  g = (j["steps"] || []).select { |s| s["run"].to_s.include?("cargo test --locked -p rubrica-diagram --test golden") }
+  puts "golden-once" if g.length == 1 && g[0]["if"].to_s.gsub(/\s+/, "") == "matrix.shard==\x271/4\x27"
 ' "$wf/ci.yml" 2>&1) || bad "the linear-arm64 check failed: $la_report"
-for k in runner render markdown diagram; do
+for k in runner render markdown diagram golden-once; do
   printf '%s\n' "$la_report" | grep -qxF "$k" || bad "ci.yml linear-arm64: $k does not hold"
 done
 grep_status -c 'ubuntu-24\.04-arm' "$wf/ci.yml"

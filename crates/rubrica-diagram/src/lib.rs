@@ -3,7 +3,10 @@
 //! is read from the host.
 
 pub mod flowchart;
+mod geom;
+mod layered;
 mod preamble;
+mod svg;
 mod why;
 mod widths;
 
@@ -42,4 +45,21 @@ pub fn advance(c: char) -> u16 {
 pub fn text_width(s: &str) -> u32 {
     s.chars()
         .fold(0u32, |sum, c| sum.saturating_add(u32::from(advance(c))))
+}
+
+/// Draws the diagram in `src` as one `<svg>` element, or says why it is not drawn. The same
+/// source gives the same bytes on every run and every platform.
+pub fn render(src: &str) -> Result<String, Unsupported> {
+    let p = preamble(src)?;
+    let keyword = match p.kind {
+        Kind::Flowchart => return flowchart::draw(&flowchart::parse(src)?),
+        Kind::Sequence => "sequenceDiagram",
+        Kind::State => "stateDiagram-v2",
+    };
+    Err(Unsupported {
+        line: p.header_line,
+        why: Why::UnknownType {
+            keyword: keyword.to_string(),
+        },
+    })
 }

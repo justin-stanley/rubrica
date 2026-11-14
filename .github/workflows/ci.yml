@@ -351,7 +351,8 @@ jobs:
     # One check per shard, named "linear-arm64 (1/4)" to "linear-arm64 (4/4)": a required check
     # lists these four names, not "linear-arm64".
     name: linear-arm64 (${{ matrix.shard }})
-    # The ratio tests of the parser and the renderer on an arm64 runner, natively: no emulation.
+    # The ratio tests of the parser and the renderer on an arm64 runner, natively: no emulation,
+    # and the diagram corpus is byte-identical.
     runs-on: ubuntu-24.04-arm
     strategy:
       # One shard's failure must not hide another's.
@@ -377,6 +378,11 @@ jobs:
           cargo test --locked -p rubrica-render --test linear --release
           cargo test --locked -p rubrica-markdown --test linear --release
           cargo test --locked -p rubrica-diagram --test linear --release
+      # The corpus renders to its blessed SVG byte for byte on arm64 as on the Rust job's amd64.
+      # It does not depend on the shard, so it runs once, in the first.
+      - name: The diagram corpus is byte-identical
+        if: matrix.shard == '1/4'
+        run: cargo test --locked -p rubrica-diagram --test golden
 
   no-js:
     name: no-js

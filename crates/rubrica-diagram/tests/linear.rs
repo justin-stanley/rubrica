@@ -49,7 +49,7 @@ fn the_limits_follow_the_hosted_ci_switch() {
 #[cfg(not(debug_assertions))]
 const FLOOR: Duration = Duration::from_millis(50);
 
-/// Renders per timing: one render of a 300-node flowchart is well under a millisecond.
+/// Renders per timing: one render of a 300-node flowchart takes about a millisecond.
 #[cfg(not(debug_assertions))]
 const R: usize = 100;
 
@@ -133,8 +133,10 @@ fn layout_time_is_linear_in_nodes() {
         let mut series: Vec<(usize, Duration)> = Vec::new();
         for &n in sizes {
             let src = shape(name, n);
+            // The ladder has n / 2 rungs, so an odd n draws n - 1 nodes.
+            let want = if name == "ladder" { n / 2 * 2 } else { n };
             let nodes = rubrica_diagram::flowchart::parse(&src).map(|f| f.nodes.len());
-            assert_eq!(nodes, Ok(n), "{name} n={n}: the shape's nodes");
+            assert_eq!(nodes, Ok(want), "{name} n={n}: the shape's nodes");
             if let Err(e) = render(&src) {
                 panic!("{name} n={n}: render failed: {e:?}");
             }

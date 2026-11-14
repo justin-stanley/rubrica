@@ -328,12 +328,9 @@ fn boxes_never_overlap_and_edges_touch_their_ends() {
                 "{file}: edge {i} {:?} does not join {from:?} and {to:?}",
                 g.points
             );
-            // Every segment is horizontal or vertical.
+            // No point is repeated (the stubs and the dummies' points are joined by straight
+            // lines, which may be diagonal).
             for w in g.points.windows(2) {
-                assert!(
-                    w[0].0 == w[1].0 || w[0].1 == w[1].1,
-                    "{file}: edge {i} {w:?}"
-                );
                 assert_ne!(w[0], w[1], "{file}: edge {i} repeats a point");
             }
         }

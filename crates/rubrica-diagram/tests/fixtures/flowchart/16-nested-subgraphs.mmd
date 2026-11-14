@@ -1,0 +1,9 @@
+flowchart LR
+  subgraph outer [Outer]
+    subgraph inner [Inner]
+      x --> y
+    end
+    y --> z
+  end
+  w --> x
+  z --> v

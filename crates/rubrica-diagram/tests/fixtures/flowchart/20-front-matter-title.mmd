@@ -1,0 +1,7 @@
+---
+title: Release flow
+---
+flowchart LR
+  dev[Develop] --> rc[Release candidate] --> soak{Soak passes?}
+  soak -->|yes| tag[Tag]
+  soak -->|no| dev

@@ -85,9 +85,32 @@ fn sha256_hex(bytes: &[u8]) -> String {
         .collect()
 }
 
-/// Elements v1 refuses outright: the theme uses none of them. (Not `svg`: the theme's logo
-/// is an inline one. A script inside an `svg` is a `script` tag, and is found as one.)
+/// Elements v1 refuses outright: the theme uses none of them. (Not `svg`: inline SVG is
+/// checked element by element against the diagram vocabulary (`SVG_AUDIT_ELEMENTS`).)
 const REFUSED_ELEMENTS: [&str; 5] = ["base", "object", "embed", "iframe", "math"];
+
+/// Elements an inline `<svg>` may hold: the diagram vocabulary. Kept here, not imported from
+/// the sanitizer: the auditor is an independent check.
+const SVG_AUDIT_ELEMENTS: [&str; 7] = ["svg", "g", "path", "rect", "text", "title", "desc"];
+
+/// Attributes they may carry: the diagram vocabulary's, and the logomark's two.
+const SVG_AUDIT_ATTRIBUTES: [&str; 15] = [
+    "role",
+    "viewbox",
+    "width",
+    "height",
+    "class",
+    "font-family",
+    "font-size",
+    "x",
+    "y",
+    "rx",
+    "ry",
+    "d",
+    "text-anchor",
+    "aria-hidden",
+    "focusable",
+];
 
 /// Image types a `data:` URL may carry.
 const DATA_IMAGES: [&str; 4] = ["png", "jpeg", "gif", "webp"];
@@ -140,6 +163,8 @@ struct Audit<'a> {
     loaders: Cell<usize>,
     /// A loader tag was just opened: the next token must be its end tag.
     open_loader: Cell<bool>,
+    /// How many `svg` elements are open.
+    svg_depth: Cell<usize>,
 }
 
 /// Whether a script tag is exactly the loader's: `type="module"` and `src` the loader's path,
@@ -174,10 +199,22 @@ impl TokenSink for Audit<'_> {
             return TokenSinkResult::Continue;
         };
         if tag.kind != TagKind::StartTag {
+            if &*tag.name == "svg" {
+                self.svg_depth.set(self.svg_depth.get().saturating_sub(1));
+            }
             return TokenSinkResult::Continue;
         }
         let name = &*tag.name;
+        if name == "svg" && !tag.self_closing {
+            self.svg_depth.set(self.svg_depth.get() + 1);
+        }
+        // In a page, inside an inline `svg` (its own start tag included). An `.svg` file is
+        // an image, not markup in a page: the theme's icon holds a `<style>`.
+        let in_svg = self.html && (self.svg_depth.get() > 0 || name == "svg");
         let mut problems = self.problems.borrow_mut();
+        if in_svg && !SVG_AUDIT_ELEMENTS.contains(&name) {
+            problems.push(format!("<{name}> inside an inline svg in {path}"));
+        }
         if name == "script" {
             if self.loader_allowed && self.html && is_loader_tag(&tag) {
                 self.loaders.set(self.loaders.get() + 1);
@@ -195,6 +232,11 @@ impl TokenSink for Audit<'_> {
             let value = &*attr.value;
             if key.starts_with("on") {
                 problems.push(format!("{key} attribute on <{name}> in {path}"));
+            }
+            if in_svg && !SVG_AUDIT_ATTRIBUTES.contains(&key) {
+                problems.push(format!(
+                    "{key} attribute on <{name}> inside an inline svg in {path}"
+                ));
             }
             if URL_ATTRIBUTES.contains(&key) && is_script_url(value) {
                 problems.push(format!(
@@ -258,6 +300,7 @@ fn audit_markup(
             csp: RefCell::default(),
             loaders: Cell::new(0),
             open_loader: Cell::new(false),
+            svg_depth: Cell::new(0),
         },
         TokenizerOpts::default(),
     );
@@ -1215,4 +1258,85 @@ fn a_planted_second_script_tag_or_a_changed_loader_is_caught() {
             "{name}: no problem holds {needle:?}: {problems:#?}"
         );
     }
+}
+
+// ---------- inline SVG: the diagram vocabulary ----------
+
+/// A diagram in the vocabulary: every element, every attribute, text that needs escaping.
+const DIAGRAM: &str = concat!(
+    "<svg role=\"img\" viewBox=\"0 0 10.00 10.00\" width=\"10.00\" height=\"10.00\" ",
+    "class=\"rd rd-flowchart\" font-family=\"Inter, sans-serif\" font-size=\"14\">",
+    "<title>t</title><desc>a --&gt; b</desc><g class=\"rd-nodes\"><g class=\"rd-node\">",
+    "<rect class=\"rd-shape\" x=\"1.00\" y=\"1.00\" width=\"5.00\" height=\"5.00\" ",
+    "rx=\"5.00\" ry=\"5.00\"></rect><path class=\"rd-shape-line\" d=\"M1.00 1.00 V5.00 ",
+    "Z\"></path><text class=\"rd-text\" x=\"2.00\" y=\"3.00\" text-anchor=\"middle\">",
+    "a &amp; b</text></g></g></svg>"
+);
+
+/// The theme's logomark, as the page template inlines it.
+const LOGOMARK: &str = "<svg viewBox=\"7 3 21 26\" aria-hidden=\"true\" focusable=\"false\"><path d=\"M15 4v14a7 7 0 0 1 0-14z\"/><path d=\"M15 4h12v3h-2v21h-3V7h-4v21h-3z\"/></svg>";
+
+/// The auditor's problems for one page, `p.html`, with the policy meta and `body`.
+fn svg_page_problems(body: &str) -> Vec<String> {
+    let html = format!(
+        "<!doctype html><html><head><meta http-equiv=\"Content-Security-Policy\" content=\"{CSP_NO_SCRIPT}\"></head><body>{body}</body></html>"
+    );
+    audit_files([("p.html", html.as_bytes())])
+}
+
+#[test]
+fn an_svg_outside_the_diagram_vocabulary_is_flagged() {
+    let inner = |x: &str| DIAGRAM.replacen("</text></g>", &format!("</text>{x}</g>"), 1);
+    let cases = [
+        (
+            inner("<foreignObject></foreignObject>"),
+            "<foreignobject> inside an inline svg in p.html",
+        ),
+        (
+            inner("<a href=\"/x\">x</a>"),
+            "<a> inside an inline svg in p.html",
+        ),
+        (
+            inner("<use href=\"#a\"></use>"),
+            "<use> inside an inline svg in p.html",
+        ),
+        (
+            inner("<image href=\"x\"></image>"),
+            "<image> inside an inline svg in p.html",
+        ),
+        (
+            inner("<circle r=\"1\"></circle>"),
+            "<circle> inside an inline svg in p.html",
+        ),
+        (
+            DIAGRAM.replacen(" ry=\"5.00\"", " ry=\"5.00\" style=\"fill:red\"", 1),
+            "style attribute on <rect> inside an inline svg in p.html",
+        ),
+        (
+            DIAGRAM.replacen(
+                "<g class=\"rd-node\">",
+                "<g class=\"rd-node\" href=\"/x\">",
+                1,
+            ),
+            "href attribute on <g> inside an inline svg in p.html",
+        ),
+    ];
+    let mut missing = Vec::new();
+    for (body, want) in &cases {
+        assert_ne!(body, DIAGRAM, "the case changed nothing: {want}");
+        let problems = svg_page_problems(body);
+        eprintln!("{want}: {problems:?}");
+        if !problems.iter().any(|p| p == want) {
+            missing.push(format!("problems contains {want:?} (got {problems:?})"));
+        }
+    }
+    assert!(missing.is_empty(), "{}", missing.join("\n"));
+}
+
+#[test]
+fn the_logomark_and_a_diagram_svg_pass_the_audit() {
+    let problems = svg_page_problems(&format!(
+        "<header><a href=\"/\">{LOGOMARK}Wiki</a></header><figure class=\"diagram\">{DIAGRAM}</figure>"
+    ));
+    assert!(problems.is_empty(), "{problems:#?}");
 }

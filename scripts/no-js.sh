@@ -26,7 +26,8 @@ fi
 for t in a_hostile_site_has_no_script a_site_with_a_redirect_has_no_script \
   an_external_site_has_no_script the_audit_finds_a_planted_script \
   the_audit_flags_a_refresh_that_leaves_the_site the_docs_site_has_no_script \
-  the_spec_site_has_no_script; do
+  the_spec_site_has_no_script an_svg_outside_the_diagram_vocabulary_is_flagged \
+  the_logomark_and_a_diagram_svg_pass_the_audit; do
   rc=0
   grep -qxF "test $t ... ok" <<<"$out" || rc=$?
   case $rc in

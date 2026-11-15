@@ -45,6 +45,7 @@ tests/render_v2.rs
 tests/sanitize.rs
 tests/sec.rs
 tests/sec_parity.rs
+tests/svg_allow_list.rs
 tests/uslug_differential.rs
 tests/writer.rs
 tests/writer_spec.rs

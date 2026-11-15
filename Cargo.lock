@@ -1950,6 +1950,7 @@ dependencies = [
  "askama",
  "chrono",
  "html5ever",
+ "rubrica-diagram",
  "rubrica-render",
  "rubrica-wasm-bundle",
  "serde",

@@ -16,8 +16,11 @@
 //! html5ever's serializer. In it every start tag is `<name` then
 //! attributes, each value in double quotes with `"` escaped, then `>`;
 //! text has `<` escaped; there are no comments, and no element whose
-//! content is raw text (`script`, `style`, `textarea`, `title`: ammonia
-//! keeps none), so a `<` outside a quoted value always starts a tag. And
+//! content the serializer writes unescaped (`script`, `style`, `xmp`,
+//! `iframe`, `noembed`, `noframes`, `plaintext`, `noscript`: ammonia keeps
+//! none). A diagram's SVG `title` does reach this pass, but its text is
+//! escaped like any other (the serializer writes raw text only for those
+//! eight), so a `<` outside a quoted value always starts a tag. And
 //! every `<h1>`–`<h6>` and `<table>` there is Rubrica's own: the
 //! sanitizer's first pass drops every raw tag but `br sub sup kbd details
 //! summary`, with every attribute but `open` (`raw_html_cannot_set_an_id_or_a_class`

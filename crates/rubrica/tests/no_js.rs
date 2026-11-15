@@ -85,9 +85,32 @@ fn sha256_hex(bytes: &[u8]) -> String {
         .collect()
 }
 
-/// Elements v1 refuses outright: the theme uses none of them. (Not `svg`: the theme's logo
-/// is an inline one. A script inside an `svg` is a `script` tag, and is found as one.)
+/// Elements v1 refuses outright: the theme uses none of them. (Not `svg`: inline SVG is
+/// checked element by element against the diagram vocabulary (`SVG_AUDIT_ELEMENTS`).)
 const REFUSED_ELEMENTS: [&str; 5] = ["base", "object", "embed", "iframe", "math"];
+
+/// Elements an inline `<svg>` may hold: the diagram vocabulary. Kept here, not imported from
+/// the sanitizer: the auditor is an independent check.
+const SVG_AUDIT_ELEMENTS: [&str; 7] = ["svg", "g", "path", "rect", "text", "title", "desc"];
+
+/// Attributes they may carry: the diagram vocabulary's, and the logomark's two.
+const SVG_AUDIT_ATTRIBUTES: [&str; 15] = [
+    "role",
+    "viewbox",
+    "width",
+    "height",
+    "class",
+    "font-family",
+    "font-size",
+    "x",
+    "y",
+    "rx",
+    "ry",
+    "d",
+    "text-anchor",
+    "aria-hidden",
+    "focusable",
+];
 
 /// Image types a `data:` URL may carry.
 const DATA_IMAGES: [&str; 4] = ["png", "jpeg", "gif", "webp"];
@@ -185,7 +208,13 @@ impl TokenSink for Audit<'_> {
         if name == "svg" && !tag.self_closing {
             self.svg_depth.set(self.svg_depth.get() + 1);
         }
+        // In a page, inside an inline `svg` (its own start tag included). An `.svg` file is
+        // an image, not markup in a page: the theme's icon holds a `<style>`.
+        let in_svg = self.html && (self.svg_depth.get() > 0 || name == "svg");
         let mut problems = self.problems.borrow_mut();
+        if in_svg && !SVG_AUDIT_ELEMENTS.contains(&name) {
+            problems.push(format!("<{name}> inside an inline svg in {path}"));
+        }
         if name == "script" {
             if self.loader_allowed && self.html && is_loader_tag(&tag) {
                 self.loaders.set(self.loaders.get() + 1);
@@ -203,6 +232,11 @@ impl TokenSink for Audit<'_> {
             let value = &*attr.value;
             if key.starts_with("on") {
                 problems.push(format!("{key} attribute on <{name}> in {path}"));
+            }
+            if in_svg && !SVG_AUDIT_ATTRIBUTES.contains(&key) {
+                problems.push(format!(
+                    "{key} attribute on <{name}> inside an inline svg in {path}"
+                ));
             }
             if URL_ATTRIBUTES.contains(&key) && is_script_url(value) {
                 problems.push(format!(

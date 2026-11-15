@@ -752,6 +752,12 @@ coverage_findings() {
     stage = steps.find { |s| s["run"].to_s.include?("scripts/coverage-site.sh") }
     puts "summary-before-stage" if sum && stage && steps.index(sum) < steps.index(stage)
     puts "site-staged-on-main-push" if stage && stage["if"].to_s.strip == push_main
+    # target/ is cached and the cache is saved on main after staging, so the next push to main
+    # restores target/pages and coverage-site.sh refuses an output directory that exists.
+    sl = stage ? stage["run"].to_s.lines.map(&:strip) : []
+    ci = sl.index("rm -rf target/pages")
+    si = sl.index { |l| l.start_with?("scripts/coverage-site.sh") }
+    puts "stage-clears-pages" if ci && si && ci < si
     pa = steps.find { |s| s["uses"].to_s.start_with?("actions/upload-pages-artifact@") }
     puts "pages-artifact" if pa && pa["uses"] =~ /\Aactions\/upload-pages-artifact@[0-9a-f]{40}\z/ && pa["if"].to_s.strip == push_main && pa["with"]["path"].to_s != ""
     up = steps.find { |s| s["uses"].to_s.start_with?("actions/upload-artifact@") && s["with"]["name"] == "coverage-html" }
@@ -761,7 +767,7 @@ coverage_findings() {
     puts "no-uploader" unless j.to_s =~ /codecov|coveralls|codacy|sonar|CODECOV|COVERALLS|secrets\.|token/i
   ' "$1"
 }
-coverage_keys="named needs-wasm downloads-bundle pinned-install workspace-run install-before-run component summary-json summary-script floor-check badge summary-before-stage site-staged-on-main-push pages-artifact html-artifact only-first-party-actions no-uploader"
+coverage_keys="named needs-wasm downloads-bundle pinned-install workspace-run install-before-run component summary-json summary-script floor-check badge summary-before-stage site-staged-on-main-push stage-clears-pages pages-artifact html-artifact only-first-party-actions no-uploader"
 cov_report=$(coverage_findings "$wf/ci.yml" 2>&1) || bad "the coverage check failed: $cov_report"
 for k in $coverage_keys; do
   printf '%s\n' "$cov_report" | grep -qxF "$k" || bad "ci.yml coverage: $k does not hold"
@@ -785,6 +791,7 @@ if printf '%s\n' "$cov_report" | grep -qxF named; then
   cov_variant "no floor file" floor-check 's#coverage-floor.toml#other.toml#'
   cov_variant "a floor check that cannot fail" floor-check 's#--badge \([^ ]*\) >> "$GITHUB_STEP_SUMMARY"#--badge \1 >> "$GITHUB_STEP_SUMMARY" || true#'
   cov_variant "a site staged on pull requests" site-staged-on-main-push "s#if: github.event_name == 'push' && github.ref == 'refs/heads/main'#if: github.event_name == 'pull_request'#"
+  cov_variant "a stage that keeps a stale target/pages" stage-clears-pages '/^ *rm -rf target\/pages$/d'
   cov_variant "no workspace" workspace-run 's/cargo llvm-cov nextest --workspace/cargo llvm-cov nextest/'
 fi
 grep_status -rniE 'codecov|coveralls|codacy|sonarcloud' "$wf"

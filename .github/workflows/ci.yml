@@ -286,7 +286,12 @@ jobs:
       # staged only on a push to main, after the summary step succeeded.
       - name: Stage the Pages site
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: scripts/coverage-site.sh target/llvm-cov/html target/llvm-cov/badge.json target/pages
+        # target/ is cached, and a run on main saves it after staging, so the next run
+        # restores target/pages; coverage-site.sh refuses an output directory that exists.
+        run: |
+          set -euo pipefail
+          rm -rf target/pages
+          scripts/coverage-site.sh target/llvm-cov/html target/llvm-cov/badge.json target/pages
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         with:
